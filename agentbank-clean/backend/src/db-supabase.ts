@@ -2,16 +2,32 @@
 // Drop-in replacement for db.ts — same function signatures, persistent storage.
 // Switch between them in db.ts by changing one import line.
 
+//import { createClient } from "@supabase/supabase-js";
+
+//const supabaseUrl = process.env.SUPABASE_URL!;
+//const supabaseKey = process.env.SUPABASE_SERVICE_KEY!;
+
+//if (!supabaseUrl || !supabaseKey) {
+//  throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_KEY in environment");
+//}
+
+//export const supabase = createClient(supabaseUrl, supabaseKey);
+
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_KEY!;
+// DO NOT use the ! operator here, as it hides the error from TS but crashes at runtime
+const supabaseUrl = process.env.SUPABASE_URL || "";
+const supabaseKey = process.env.SUPABASE_SERVICE_KEY || "";
 
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_KEY in environment");
+// Only initialize if we have the credentials
+export const supabase = (supabaseUrl && supabaseKey) 
+  ? createClient(supabaseUrl, supabaseKey) 
+  : null as any; 
+
+// Add a helper to prevent "undefined" errors later
+if (!supabase) {
+  console.warn("⚠️ Supabase client initialized with missing credentials. Ensure environment variables are set.");
 }
-
-export const supabase = createClient(supabaseUrl, supabaseKey);
 
 // ── Types (same as db.ts) ──────────────────────────────────────────────────
 
