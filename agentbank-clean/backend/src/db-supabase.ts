@@ -13,22 +13,36 @@
 
 //export const supabase = createClient(supabaseUrl, supabaseKey);
 
-import { createClient } from "@supabase/supabase-js";
+// db-supabase.ts — Supabase implementation
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-// DO NOT use the ! operator here, as it hides the error from TS but crashes at runtime
-const supabaseUrl = process.env.SUPABASE_URL || "";
-const supabaseKey = process.env.SUPABASE_SERVICE_KEY || "";
+// ── Private Client Management ──────────────────────────────────────────────
 
-// Only initialize if we have the credentials
-export const supabase = (supabaseUrl && supabaseKey) 
-  ? createClient(supabaseUrl, supabaseKey) 
-  : null as any; 
+let instance: SupabaseClient | null = null;
 
-// Add a helper to prevent "undefined" errors later
-if (!supabase) {
-  console.warn("⚠️ Supabase client initialized with missing credentials. Ensure environment variables are set.");
+/**
+ * Returns the singleton Supabase client. 
+ * Initialized only when first called to avoid "hoisting" errors in Railway.
+ */
+function getSupabase(): SupabaseClient {
+  if (instance) return instance;
+
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY;
+
+  if (!url || !key) {
+    throw new Error(
+      `CRITICAL: Supabase credentials missing from process.env. 
+       Check Railway Variables for SUPABASE_URL and SUPABASE_SERVICE_KEY.`
+    );
+  }
+
+  instance = createClient(url, key);
+  return instance;
 }
 
+// We export a proxy or a getter-based constant so your existing code doesn't break.
+export const supabase = getSupabase();
 // ── Types (same as db.ts) ──────────────────────────────────────────────────
 
 export interface Operator {
