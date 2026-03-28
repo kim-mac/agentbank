@@ -1,5 +1,6 @@
 # Environment Variables (CRITICAL - NEVER commit secrets)
 .env
+.env.example
 .env.local
 .env.*.local
 .env.production
@@ -105,3 +106,7 @@ DEPLOYMENT_GUIDE.md
 *.key
 .env.*.pem
 .env.*.key
+
+# Private keys — NEVER commit these
+.agent-key
+*.key
