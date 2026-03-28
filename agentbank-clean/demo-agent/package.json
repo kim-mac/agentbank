@@ -1,0 +1,26 @@
+{
+  "name": "@agentbank/demo-agent",
+  "version": "1.0.0",
+  "scripts": {
+    "setup": "ts-node src/setup.ts",
+    "dev": "ts-node-dev --respawn --transpile-only src/agent.ts",
+    "research": "ts-node --transpile-only src/roles/research-agent.ts",
+    "news": "ts-node --transpile-only src/roles/news-agent.ts",
+    "risk": "ts-node --transpile-only src/roles/risk-agent.ts",
+    "trading": "ts-node --transpile-only src/roles/trading-agent.ts",
+    "execution": "ts-node --transpile-only src/roles/execution-agent.ts",
+    "auto": "ts-node --transpile-only src/auto-agent.ts"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.95.3",
+    "bs58": "^5.0.0",
+    "dotenv": "^16.4.5",
+    "@google/genai": "^1.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "@types/node": "^22.0.0"
+  }
+}

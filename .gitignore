@@ -1,0 +1,107 @@
+# Environment Variables (CRITICAL - NEVER commit secrets)
+.env
+.env.local
+.env.*.local
+.env.production
+.env.production.local
+.env.development.local
+.env.test.local
+
+# Node.js / NPM
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+pnpm-debug.log*
+lerna-debug.log*
+
+# Build Outputs
+dist/
+build/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+
+# IDE and Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+*.sublime-project
+*.sublime-workspace
+.env.local.vscode
+
+# Development/Runtime Temporary Files
+logs/
+*.log
+tmp/
+temp/
+.cache/
+.parcel-cache/
+.eslintcache
+
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Testing
+coverage/
+.nyc_output/
+.jest-cache/
+*.lcov
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Git
+.git/
+.gitkeep
+
+# Package Manager Lock Files (optional - uncomment if using only one package manager)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# Deployment Files (temporary, locally generated)
+RAILWAY_ENV_VARS.md
+VERCEL_ENV_VARS.md
+DEPLOYMENT_GUIDE.md
+
+# Archive/Backup Files
+*.zip
+*.tar.gz
+*.bak
+*.backup
+
+# Local Platform/Framework Files
+.env.local
+.env.*.local
+.vercel/
+.railway/
+
+# Compiled Files
+*.js
+*.jsx
+!*.config.js
+!next.config.js
+!.github/**/*.js
+
+# Misc
+.cache
+.cache/
+*.pem
+*.key
+.env.*.pem
+.env.*.key

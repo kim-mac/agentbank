@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgentBank — Operator Dashboard</title>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #111118;
+      --surface2: #1a1a24;
+      --surface3: #22222e;
+      --border: rgba(255,255,255,0.07);
+      --border2: rgba(255,255,255,0.12);
+      --text: #e8e8f0;
+      --muted: #7a7a8e;
+      --accent: #6c6ef5;
+      --accent-dim: rgba(108,110,245,0.15);
+      --green: #22c55e;
+      --green-dim: rgba(34,197,94,0.12);
+      --red: #ef4444;
+      --red-dim: rgba(239,68,68,0.12);
+      --amber: #f59e0b;
+      --amber-dim: rgba(245,158,11,0.12);
+      --solana: #9945ff;
+      --base: #0052ff;
+      --font: 'Inter', system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; min-height: 100vh; }
+
+    /* ── Layout ── */
+    .shell { display: flex; min-height: 100vh; }
+    .sidebar { width: 220px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 20px 0; flex-shrink: 0; }
+    .main { flex: 1; overflow-y: auto; }
+
+    /* ── Sidebar ── */
+    .logo { padding: 0 20px 24px; display: flex; align-items: center; gap: 10px; }
+    .logo-mark { width: 28px; height: 28px; background: var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; color: #fff; }
+    .logo-text { font-size: 15px; font-weight: 600; letter-spacing: -0.3px; }
+    .nav-section { padding: 0 12px 4px; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4px; }
+    .nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 20px; color: var(--muted); cursor: pointer; transition: all 0.15s; border-left: 2px solid transparent; font-size: 13px; }
+    .nav-item:hover { color: var(--text); background: var(--surface2); }
+    .nav-item.active { color: var(--text); background: var(--accent-dim); border-left-color: var(--accent); }
+    .nav-icon { width: 16px; text-align: center; }
+    .badge { margin-left: auto; background: var(--red); color: #fff; border-radius: 10px; padding: 1px 6px; font-size: 10px; font-weight: 600; }
+    .sidebar-bottom { margin-top: auto; padding: 16px 20px; border-top: 1px solid var(--border); }
+    .api-key-display { font-family: monospace; font-size: 11px; color: var(--muted); background: var(--surface2); padding: 6px 10px; border-radius: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ── Page ── */
+    .page { display: none; padding: 32px; max-width: 1100px; }
+    .page.active { display: block; }
+    .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+    .page-title { font-size: 20px; font-weight: 600; letter-spacing: -0.4px; }
+    .page-sub { color: var(--muted); font-size: 13px; margin-top: 3px; }
+
+    /* ── Cards ── */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+    .card-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .card-title { font-size: 13px; font-weight: 500; }
+    .card-body { padding: 20px; }
+
+    /* ── Stats row ── */
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+    .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
+    .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+    .stat-value { font-size: 24px; font-weight: 600; letter-spacing: -0.5px; }
+    .stat-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .stat-green { color: var(--green); }
+    .stat-amber { color: var(--amber); }
+
+    /* ── Agent cards ── */
+    .agents-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+    .agent-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; transition: border-color 0.15s; cursor: pointer; }
+    .agent-card:hover { border-color: var(--border2); }
+    .agent-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 14px; }
+    .agent-name { font-size: 14px; font-weight: 600; }
+    .agent-desc { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+    .status-dot.active { background: var(--green); box-shadow: 0 0 0 3px var(--green-dim); }
+    .status-dot.paused { background: var(--amber); }
+    .status-dot.frozen { background: var(--red); }
+    .agent-wallet { font-family: monospace; font-size: 11px; color: var(--muted); background: var(--surface2); padding: 6px 10px; border-radius: 6px; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; }
+    .chain-pill { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 10px; }
+    .chain-pill.solana { background: rgba(153,69,255,0.15); color: var(--solana); }
+    .chain-pill.base { background: rgba(0,82,255,0.15); color: #4d8fff; }
+    .agent-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+    .agent-stat { background: var(--surface2); border-radius: 8px; padding: 10px 12px; }
+    .agent-stat-label { font-size: 10px; color: var(--muted); margin-bottom: 4px; }
+    .agent-stat-value { font-size: 16px; font-weight: 600; }
+    .progress-bar { height: 4px; background: var(--surface3); border-radius: 2px; margin-top: 8px; overflow: hidden; }
+    .progress-fill { height: 100%; border-radius: 2px; background: var(--accent); transition: width 0.3s; }
+    .progress-fill.warn { background: var(--amber); }
+    .progress-fill.danger { background: var(--red); }
+    .agent-actions { display: flex; gap: 8px; }
+
+    /* ── Buttons ── */
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 8px; font-size: 12px; font-weight: 500; cursor: pointer; border: none; transition: all 0.15s; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: #5a5ce0; }
+    .btn-ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-ghost:hover { background: var(--surface3); }
+    .btn-danger { background: var(--red-dim); color: var(--red); border: 1px solid rgba(239,68,68,0.2); }
+    .btn-danger:hover { background: rgba(239,68,68,0.2); }
+    .btn-green { background: var(--green-dim); color: var(--green); border: 1px solid rgba(34,197,94,0.2); }
+    .btn-green:hover { background: rgba(34,197,94,0.2); }
+    .btn-sm { padding: 5px 10px; font-size: 11px; }
+    .btn-full { width: 100%; justify-content: center; }
+
+    /* ── Table ── */
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; font-size: 11px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; padding: 0 16px 12px; }
+    td { padding: 12px 16px; border-top: 1px solid var(--border); font-size: 13px; }
+    tr:hover td { background: var(--surface2); }
+    .tx-hash { font-family: monospace; font-size: 11px; color: var(--muted); }
+    .tx-status { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 500; }
+    .tx-status.confirmed { background: var(--green-dim); color: var(--green); }
+    .tx-status.rejected { background: var(--red-dim); color: var(--red); }
+    .tx-status.pending_approval { background: var(--amber-dim); color: var(--amber); }
+    .tx-status.failed { background: var(--red-dim); color: var(--red); }
+
+    /* ── Approval cards ── */
+    .approval-card { background: var(--surface); border: 1px solid var(--amber); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+    .approval-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .approval-icon { font-size: 18px; }
+    .approval-agent { font-weight: 600; }
+    .approval-detail { font-size: 12px; color: var(--muted); }
+    .approval-amount { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; margin: 12px 0; }
+    .approval-memo { font-size: 12px; color: var(--muted); background: var(--surface2); padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; font-style: italic; }
+    .approval-actions { display: flex; gap: 10px; }
+
+    /* ── Modal ── */
+    .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100; align-items: center; justify-content: center; }
+    .modal-backdrop.open { display: flex; }
+    .modal { background: var(--surface); border: 1px solid var(--border2); border-radius: 16px; width: 480px; max-width: 90vw; }
+    .modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .modal-title { font-size: 16px; font-weight: 600; }
+    .modal-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; padding: 4px; }
+    .modal-body { padding: 24px; }
+    .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px; }
+
+    /* ── Form ── */
+    .form-group { margin-bottom: 16px; }
+    .form-label { font-size: 12px; font-weight: 500; color: var(--muted); margin-bottom: 6px; display: block; }
+    .form-input { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; color: var(--text); font-size: 13px; outline: none; transition: border-color 0.15s; }
+    .form-input:focus { border-color: var(--accent); }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+    /* ── Chain toggle ── */
+    .chain-toggle { display: flex; gap: 8px; margin-bottom: 16px; }
+    .chain-option { flex: 1; padding: 10px; border-radius: 8px; border: 1px solid var(--border); cursor: pointer; text-align: center; transition: all 0.15s; }
+    .chain-option.selected { border-color: var(--accent); background: var(--accent-dim); }
+    .chain-option-name { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+    .chain-option-sub { font-size: 10px; color: var(--muted); }
+
+    /* ── Toast ── */
+    .toast { position: fixed; bottom: 24px; right: 24px; background: var(--surface3); border: 1px solid var(--border2); border-radius: 10px; padding: 12px 16px; font-size: 13px; z-index: 1000; transform: translateY(80px); opacity: 0; transition: all 0.3s; max-width: 320px; }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.success { border-color: rgba(34,197,94,0.4); }
+    .toast.error { border-color: rgba(239,68,68,0.4); }
+
+    /* ── Empty state ── */
+    .empty { text-align: center; padding: 60px 20px; color: var(--muted); }
+    .empty-icon { font-size: 40px; margin-bottom: 12px; }
+    .empty-title { font-size: 15px; font-weight: 500; color: var(--text); margin-bottom: 6px; }
+
+    /* ── Policy editor ── */
+    .policy-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); }
+    .policy-row:last-child { border-bottom: none; }
+    .policy-label { font-size: 13px; }
+    .policy-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .policy-input { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; color: var(--text); font-size: 13px; width: 120px; text-align: right; }
+    .kill-switch { display: flex; align-items: center; gap: 10px; }
+    .toggle { position: relative; width: 36px; height: 20px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider { position: absolute; inset: 0; background: var(--surface3); border-radius: 10px; cursor: pointer; transition: 0.2s; }
+    .toggle-slider:before { content: ''; position: absolute; width: 14px; height: 14px; left: 3px; top: 3px; background: var(--muted); border-radius: 50%; transition: 0.2s; }
+    .toggle input:checked + .toggle-slider { background: var(--accent); }
+    .toggle input:checked + .toggle-slider:before { transform: translateX(16px); background: #fff; }
+
+    /* ── Connection setup ── */
+    .setup-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .setup-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 40px; width: 420px; }
+    .setup-logo { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; }
+    .setup-title { font-size: 18px; font-weight: 600; margin-bottom: 24px; }
+  </style>
+</head>
+<body>
+
+<!-- Setup screen (shown until API key entered) -->
+<div class="setup-screen" id="setup-screen">
+  <div class="setup-card">
+    <div class="setup-logo">
+      <div class="logo-mark">AB</div>
+      <span style="font-size:18px;font-weight:600;letter-spacing:-0.4px">AgentBank</span>
+    </div>
+    <div class="setup-title">Connect to your platform</div>
+    <div class="form-group">
+      <label class="form-label">Backend URL</label>
+      <input class="form-input" id="setup-url" value="http://localhost:3001/v1" placeholder="http://localhost:3001/v1">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Operator API Key</label>
+      <input class="form-input" id="setup-key" placeholder="op_xxxxxxxxxxxxxxxx">
+      <div class="form-hint">From your registration response. Or run the setup script.</div>
+    </div>
+    <button class="btn btn-primary btn-full" style="margin-top:8px" onclick="connect()">Connect Dashboard</button>
+    <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border)">
+      <div class="form-hint" style="text-align:center;margin-bottom:12px">Don't have an account yet?</div>
+      <button class="btn btn-ghost btn-full" onclick="showRegisterModal()">Register New Operator</button>
+    </div>
+  </div>
+</div>
+
+<!-- Main dashboard -->
+<div class="shell" id="dashboard" style="display:none">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-mark">AB</div>
+      <span class="logo-text">AgentBank</span>
+    </div>
+    <div class="nav-item active" onclick="nav('overview')">
+      <span class="nav-icon">⬡</span> Overview
+    </div>
+    <div class="nav-item" onclick="nav('agents')">
+      <span class="nav-icon">◈</span> Agents
+    </div>
+    <div class="nav-item" onclick="nav('approvals')">
+      <span class="nav-icon">◎</span> Approvals
+      <span class="badge" id="approval-badge" style="display:none">0</span>
+    </div>
+    <div class="nav-item" onclick="nav('transactions')">
+      <span class="nav-icon">↕</span> Transactions
+    </div>
+    <div style="margin-top:auto"></div>
+    <div class="sidebar-bottom">
+      <div class="form-hint" style="margin-bottom:6px">Operator Key</div>
+      <div class="api-key-display" id="sidebar-key">—</div>
+    </div>
+  </aside>
+
+  <!-- Pages -->
+  <main class="main">
+
+    <!-- Overview -->
+    <div class="page active" id="page-overview">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Overview</div>
+          <div class="page-sub" id="overview-org">Loading...</div>
+        </div>
+        <button class="btn btn-primary" onclick="openCreateAgent()">+ New Agent</button>
+      </div>
+      <div class="stats" id="stats-row">
+        <div class="stat"><div class="stat-label">Active Agents</div><div class="stat-value" id="stat-agents">—</div></div>
+        <div class="stat"><div class="stat-label">Today's Spend</div><div class="stat-value stat-amber" id="stat-spend">—</div></div>
+        <div class="stat"><div class="stat-label">Total Transactions</div><div class="stat-value" id="stat-txs">—</div></div>
+        <div class="stat"><div class="stat-label">Pending Approvals</div><div class="stat-value stat-amber" id="stat-approvals">—</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Recent Transactions</span></div>
+        <div id="recent-txs"><div class="empty"><div class="empty-icon">↕</div><div class="empty-title">No transactions yet</div></div></div>
+      </div>
+    </div>
+
+    <!-- Agents -->
+    <div class="page" id="page-agents">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Agents</div>
+          <div class="page-sub">Manage your AI agent wallets</div>
+        </div>
+        <button class="btn btn-primary" onclick="openCreateAgent()">+ New Agent</button>
+      </div>
+      <div class="agents-grid" id="agents-grid">
+        <div class="empty"><div class="empty-icon">◈</div><div class="empty-title">No agents yet</div><div>Create your first agent to get started</div></div>
+      </div>
+    </div>
+
+    <!-- Approvals -->
+    <div class="page" id="page-approvals">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Approvals</div>
+          <div class="page-sub">Transactions awaiting your sign-off</div>
+        </div>
+        <button class="btn btn-ghost" onclick="loadApprovals()">↺ Refresh</button>
+      </div>
+      <div id="approvals-list">
+        <div class="empty"><div class="empty-icon">◎</div><div class="empty-title">No pending approvals</div></div>
+      </div>
+    </div>
+
+    <!-- Transactions -->
+    <div class="page" id="page-transactions">
+      <div class="page-header">
+        <div>
+          <div class="page-title">All Transactions</div>
+          <div class="page-sub">Complete history across all agents</div>
+        </div>
+        <button class="btn btn-ghost" onclick="loadTransactions()">↺ Refresh</button>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr>
+            <th>Agent</th><th>Amount</th><th>To</th><th>Status</th><th>Memo</th><th>Time</th>
+          </tr></thead>
+          <tbody id="tx-table-body">
+            <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:40px">No transactions yet</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Create Agent Modal -->
+<div class="modal-backdrop" id="create-agent-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Create New Agent</span>
+      <button class="modal-close" onclick="closeModal('create-agent-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Agent Name</label>
+        <input class="form-input" id="agent-name" placeholder="trading-agent-01">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description</label>
+        <input class="form-input" id="agent-desc" placeholder="Autonomous trading agent for prediction markets">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Chain</label>
+        <div class="chain-toggle">
+          <div class="chain-option selected" id="chain-solana" onclick="selectChain('solana')">
+            <div class="chain-option-name" style="color:var(--solana)">◎ Solana</div>
+            <div class="chain-option-sub">~0.000025 SOL/tx</div>
+          </div>
+          <div class="chain-option" id="chain-base" onclick="selectChain('base')">
+            <div class="chain-option-name" style="color:#4d8fff">◈ Base</div>
+            <div class="chain-option-sub">ERC-4337 smart wallet</div>
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Policy Settings</label>
+        <div class="form-row">
+          <div>
+            <label class="form-label">Daily Limit (SOL/ETH)</label>
+            <input class="form-input" id="policy-daily" type="number" value="1.0" step="0.1">
+          </div>
+          <div>
+            <label class="form-label">TX Limit (SOL/ETH)</label>
+            <input class="form-input" id="policy-tx" type="number" value="0.1" step="0.01">
+          </div>
+        </div>
+        <div style="margin-top:12px">
+          <label class="form-label">Require Approval Above (SOL/ETH)</label>
+          <input class="form-input" id="policy-approval" type="number" value="0.5" step="0.1">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('create-agent-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="createAgent()">Create Agent</button>
+    </div>
+  </div>
+</div>
+
+<!-- Agent Detail Modal -->
+<div class="modal-backdrop" id="agent-detail-modal">
+  <div class="modal" style="width:560px">
+    <div class="modal-header">
+      <span class="modal-title" id="detail-agent-name">Agent Details</span>
+      <button class="modal-close" onclick="closeModal('agent-detail-modal')">✕</button>
+    </div>
+    <div class="modal-body" id="agent-detail-body">Loading...</div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('agent-detail-modal')">Close</button>
+      <button class="btn btn-danger btn-sm" id="detail-freeze-btn" onclick="toggleFreeze()">🔒 Freeze Agent</button>
+    </div>
+  </div>
+</div>
+
+<!-- Register Modal -->
+<div class="modal-backdrop" id="register-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Register Operator</span>
+      <button class="modal-close" onclick="closeModal('register-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input class="form-input" id="reg-email" placeholder="you@example.com">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Organization Name</label>
+        <input class="form-input" id="reg-org" placeholder="My AI Lab">
+      </div>
+      <div id="reg-result" style="display:none;margin-top:16px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('register-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="register()">Register</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+let API_URL = '';
+let OPERATOR_KEY = '';
+let selectedChain = 'solana';
+let currentDetailAgentId = null;
+let allAgents = [];
+
+// ── API helper ──────────────────────────────────────────────────────────────
+async function api(method, path, body) {
+  try {
+    const res = await fetch(`${API_URL}${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json', 'x-api-key': OPERATOR_KEY },
+      ...(body && { body: JSON.stringify(body) })
+    });
+    return res.json();
+  } catch(e) {
+    return { error: 'Cannot connect to backend. Is it running?' };
+  }
+}
+
+// ── Connect ─────────────────────────────────────────────────────────────────
+async function connect() {
+  API_URL = document.getElementById('setup-url').value.trim();
+  OPERATOR_KEY = document.getElementById('setup-key').value.trim();
+  if (!OPERATOR_KEY) return toast('Enter your operator API key', 'error');
+  const res = await api('GET', '/operators/agents');
+  if (res.error) return toast(res.error, 'error');
+  document.getElementById('setup-screen').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'flex';
+  document.getElementById('sidebar-key').textContent = OPERATOR_KEY.slice(0,20) + '...';
+  loadAll();
+}
+
+// ── Navigation ───────────────────────────────────────────────────────────────
+function nav(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  event.currentTarget.classList.add('active');
+  if (page === 'agents') loadAgents();
+  if (page === 'approvals') loadApprovals();
+  if (page === 'transactions') loadTransactions();
+}
+
+// ── Load all data ────────────────────────────────────────────────────────────
+async function loadAll() {
+  await Promise.all([loadOverview(), loadApprovals()]);
+}
+
+async function loadOverview() {
+  const [agentsRes, approvalsRes, txRes] = await Promise.all([
+    api('GET', '/operators/agents'),
+    api('GET', '/operators/approvals'),
+    api('GET', '/operators/transactions')
+  ]);
+
+  allAgents = agentsRes.agents || [];
+  const approvals = approvalsRes.pendingApprovals || [];
+  const txs = txRes.transactions || [];
+
+  const activeCount = allAgents.filter(a => a.status === 'active').length;
+  const todaySpend = allAgents.reduce((sum, a) => sum + (a.todaySpend || 0), 0);
+  const confirmedTxs = txs.filter(t => t.status === 'confirmed').length;
+
+  document.getElementById('stat-agents').textContent = activeCount;
+  document.getElementById('stat-spend').textContent = todaySpend.toFixed(4) + ' SOL';
+  document.getElementById('stat-txs').textContent = confirmedTxs;
+  document.getElementById('stat-approvals').textContent = approvals.length;
+
+  // Approval badge
+  const badge = document.getElementById('approval-badge');
+  badge.textContent = approvals.length;
+  badge.style.display = approvals.length > 0 ? 'inline' : 'none';
+
+  // Recent txs
+  renderRecentTxs(txs.slice(0, 10), allAgents);
+}
+
+function renderRecentTxs(txs, agents) {
+  if (!txs.length) return;
+  const agentMap = Object.fromEntries(agents.map(a => [a.id, a.name]));
+  document.getElementById('recent-txs').innerHTML = `
+    <table>
+      <thead><tr><th>Agent</th><th>Amount</th><th>To</th><th>Status</th><th>Memo</th><th>Time</th></tr></thead>
+      <tbody>${txs.map(tx => `
+        <tr>
+          <td>${agentMap[tx.agentId] || 'Unknown'}</td>
+          <td><strong>${tx.amount} ${tx.token}</strong></td>
+          <td class="tx-hash">${tx.toAddress?.slice(0,12)}...</td>
+          <td><span class="tx-status ${tx.status}">${tx.status}</span></td>
+          <td style="color:var(--muted);font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${tx.memo || '—'}</td>
+          <td style="color:var(--muted)">${timeAgo(tx.createdAt)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+async function loadAgents() {
+  const res = await api('GET', '/operators/agents');
+  allAgents = res.agents || [];
+  const grid = document.getElementById('agents-grid');
+  if (!allAgents.length) {
+    grid.innerHTML = `<div class="empty"><div class="empty-icon">◈</div><div class="empty-title">No agents yet</div><div>Create your first agent to get started</div></div>`;
+    return;
+  }
+  grid.innerHTML = allAgents.map(agent => {
+    const pct = agent.dailyLimit > 0 ? (agent.todaySpend / agent.dailyLimit) * 100 : 0;
+    const fillClass = pct > 80 ? 'danger' : pct > 60 ? 'warn' : '';
+    return `<div class="agent-card" onclick="openAgentDetail('${agent.id}')">
+      <div class="agent-header">
+        <div>
+          <div class="agent-name">${agent.name}</div>
+          <div class="agent-desc">${agent.description || 'No description'}</div>
+        </div>
+        <div class="status-dot ${agent.status}"></div>
+      </div>
+      <div class="agent-wallet">
+        <span>${agent.walletAddress?.slice(0,18)}...</span>
+        <span class="chain-pill solana">SOL</span>
+      </div>
+      <div class="agent-stats">
+        <div class="agent-stat">
+          <div class="agent-stat-label">Balance</div>
+          <div class="agent-stat-value">${(agent.balance?.sol || 0).toFixed(4)}</div>
+          <div class="form-hint">SOL</div>
+        </div>
+        <div class="agent-stat">
+          <div class="agent-stat-label">Today's Spend</div>
+          <div class="agent-stat-value">${(agent.todaySpend || 0).toFixed(4)}</div>
+          <div class="form-hint">of ${agent.dailyLimit} SOL</div>
+          <div class="progress-bar"><div class="progress-fill ${fillClass}" style="width:${Math.min(100,pct)}%"></div></div>
+        </div>
+      </div>
+      <div class="agent-actions">
+        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();airdrop('${agent.id}')">☁ Airdrop</button>
+        <button class="btn ${agent.status==='frozen'?'btn-green':'btn-danger'} btn-sm" onclick="event.stopPropagation();freeze('${agent.id}','${agent.status}')">
+          ${agent.status==='frozen'?'↑ Unfreeze':'🔒 Freeze'}
+        </button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function loadApprovals() {
+  const res = await api('GET', '/operators/approvals');
+  const approvals = res.pendingApprovals || [];
+  const badge = document.getElementById('approval-badge');
+  badge.textContent = approvals.length;
+  badge.style.display = approvals.length > 0 ? 'inline' : 'none';
+  const list = document.getElementById('approvals-list');
+  if (!approvals.length) {
+    list.innerHTML = `<div class="empty"><div class="empty-icon">◎</div><div class="empty-title">No pending approvals</div><div>All clear — your agents are within their limits</div></div>`;
+    return;
+  }
+  list.innerHTML = approvals.map(a => `
+    <div class="approval-card" id="approval-${a.approvalId}">
+      <div class="approval-header">
+        <span class="approval-icon">⚡</span>
+        <div>
+          <div class="approval-agent">${a.agentName}</div>
+          <div class="approval-detail">${timeAgo(a.createdAt)}</div>
+        </div>
+      </div>
+      <div class="approval-amount">${a.amount} ${a.token}</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">To: <code style="font-size:11px">${a.toAddress}</code></div>
+      <div class="approval-memo">"${a.memo || 'No reason provided'}"</div>
+      <div class="approval-actions">
+        <button class="btn btn-green" onclick="decide('${a.approvalId}','approve')">✓ Approve</button>
+        <button class="btn btn-danger" onclick="decide('${a.approvalId}','reject')">✕ Reject</button>
+      </div>
+    </div>`).join('');
+}
+
+async function loadTransactions() {
+  const [txRes, agentsRes] = await Promise.all([api('GET', '/operators/transactions'), api('GET', '/operators/agents')]);
+  const txs = txRes.transactions || [];
+  const agents = agentsRes.agents || [];
+  const agentMap = Object.fromEntries(agents.map(a => [a.id, a.name]));
+  const tbody = document.getElementById('tx-table-body');
+  if (!txs.length) { tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:40px">No transactions yet</td></tr>`; return; }
+  tbody.innerHTML = txs.map(tx => `
+    <tr>
+      <td><strong>${agentMap[tx.agentId] || 'Unknown'}</strong></td>
+      <td><strong>${tx.amount} ${tx.token}</strong></td>
+      <td class="tx-hash">${tx.toAddress?.slice(0,16)}...</td>
+      <td><span class="tx-status ${tx.status}">${tx.status}</span></td>
+      <td style="color:var(--muted);font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${tx.memo||''}">${tx.memo || '—'}</td>
+      <td style="color:var(--muted);font-size:12px">${timeAgo(tx.createdAt)}</td>
+    </tr>`).join('');
+}
+
+// ── Actions ──────────────────────────────────────────────────────────────────
+async function createAgent() {
+  const name = document.getElementById('agent-name').value.trim();
+  if (!name) return toast('Agent name required', 'error');
+  const res = await api('POST', '/operators/agents', {
+    name,
+    description: document.getElementById('agent-desc').value.trim(),
+    policy: {
+      dailyLimitUsd: parseFloat(document.getElementById('policy-daily').value),
+      txLimitUsd: parseFloat(document.getElementById('policy-tx').value),
+      requireApprovalAboveUsd: parseFloat(document.getElementById('policy-approval').value),
+      allowedChains: [selectedChain],
+      whitelistedAddresses: [],
+      killSwitch: false
+    }
+  });
+  if (res.error) return toast(res.error, 'error');
+  closeModal('create-agent-modal');
+  toast(`Agent "${name}" created! Wallet: ${res.walletAddress?.slice(0,12)}...`);
+  loadAll();
+  loadAgents();
+}
+
+async function freeze(agentId, currentStatus) {
+  const action = currentStatus === 'frozen' ? 'unfreeze' : 'freeze';
+  const res = await api('POST', `/operators/agents/${agentId}/freeze`, { action });
+  if (res.error) return toast(res.error, 'error');
+  toast(`Agent ${action}d`);
+  loadAgents();
+  loadOverview();
+}
+
+async function airdrop(agentId) {
+  toast('Requesting airdrop...');
+  const res = await api('POST', `/operators/agents/${agentId}/airdrop`, {});
+  if (res.error) return toast(res.error, 'error');
+  toast('1 devnet SOL airdropped!', 'success');
+  loadAgents();
+}
+
+async function decide(approvalId, action) {
+  const res = await api('POST', `/operators/approvals/${approvalId}`, { action });
+  if (res.error) return toast(res.error, 'error');
+  toast(action === 'approve' ? '✓ Transaction approved and sent' : '✕ Transaction rejected', action === 'approve' ? 'success' : '');
+  document.getElementById('approval-' + approvalId)?.remove();
+  loadOverview();
+}
+
+async function toggleFreeze() {
+  if (!currentDetailAgentId) return;
+  const agent = allAgents.find(a => a.id === currentDetailAgentId);
+  if (agent) await freeze(currentDetailAgentId, agent.status);
+  closeModal('agent-detail-modal');
+}
+
+async function openAgentDetail(agentId) {
+  currentDetailAgentId = agentId;
+  const agent = allAgents.find(a => a.id === agentId);
+  if (!agent) return;
+  document.getElementById('detail-agent-name').textContent = agent.name;
+  document.getElementById('detail-freeze-btn').textContent = agent.status === 'frozen' ? '↑ Unfreeze' : '🔒 Freeze';
+  document.getElementById('agent-detail-body').innerHTML = `
+    <div style="display:grid;gap:12px">
+      <div class="policy-row">
+        <div><div class="policy-label">Wallet Address</div></div>
+        <code style="font-size:11px;color:var(--muted)">${agent.walletAddress}</code>
+      </div>
+      <div class="policy-row">
+        <div><div class="policy-label">Balance</div></div>
+        <strong>${(agent.balance?.sol||0).toFixed(6)} SOL</strong>
+      </div>
+      <div class="policy-row">
+        <div><div class="policy-label">Status</div></div>
+        <span class="tx-status ${agent.status}">${agent.status}</span>
+      </div>
+      <div class="policy-row">
+        <div><div class="policy-label">Daily Spent</div><div class="policy-sub">of ${agent.dailyLimit} SOL limit</div></div>
+        <strong>${(agent.todaySpend||0).toFixed(6)} SOL</strong>
+      </div>
+      <div style="margin-top:8px;padding:14px;background:var(--surface2);border-radius:8px">
+        <div style="font-size:12px;font-weight:500;margin-bottom:10px;color:var(--muted)">Agent API Key (for SDK)</div>
+        <div class="form-hint" style="background:var(--surface3);padding:8px 12px;border-radius:6px;font-family:monospace">
+          Set AGENTBANK_API_KEY in your agent's environment. Re-create the agent to get the key from the setup script output.
+        </div>
+      </div>
+    </div>`;
+  openModal('agent-detail-modal');
+}
+
+// ── Register ─────────────────────────────────────────────────────────────────
+async function register() {
+  const email = document.getElementById('reg-email').value.trim();
+  const orgName = document.getElementById('reg-org').value.trim();
+  if (!email || !orgName) return toast('All fields required', 'error');
+  const res = await fetch(`${document.getElementById('setup-url').value}/operators/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, orgName })
+  }).then(r => r.json()).catch(() => ({ error: 'Cannot connect' }));
+  if (res.error) return toast(res.error, 'error');
+  document.getElementById('reg-result').style.display = 'block';
+  document.getElementById('reg-result').innerHTML = `
+    <div style="background:var(--green-dim);border:1px solid rgba(34,197,94,0.3);border-radius:8px;padding:14px">
+      <div style="font-weight:600;color:var(--green);margin-bottom:8px">✓ Registered!</div>
+      <div class="form-hint">Operator ID: <code>${res.operatorId}</code></div>
+      <div class="form-hint" style="margin-top:6px">API Key (save this):</div>
+      <div style="font-family:monospace;font-size:12px;background:var(--surface3);padding:8px;border-radius:6px;margin-top:4px;word-break:break-all">${res.apiKey}</div>
+    </div>`;
+  document.getElementById('setup-key').value = res.apiKey;
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function selectChain(chain) {
+  selectedChain = chain;
+  document.getElementById('chain-solana').classList.toggle('selected', chain === 'solana');
+  document.getElementById('chain-base').classList.toggle('selected', chain === 'base');
+}
+function openCreateAgent() { openModal('create-agent-modal'); }
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function showRegisterModal() { openModal('register-modal'); }
+
+function toast(msg, type = 'success') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `toast ${type} show`;
+  setTimeout(() => el.classList.remove('show'), 3500);
+}
+
+function timeAgo(iso) {
+  if (!iso) return '—';
+  const diff = Date.now() - new Date(iso).getTime();
+  const s = Math.floor(diff/1000);
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s/60)}m ago`;
+  if (s < 86400) return `${Math.floor(s/3600)}h ago`;
+  return `${Math.floor(s/86400)}d ago`;
+}
+
+// Auto-refresh approvals every 15s
+setInterval(() => {
+  if (document.getElementById('dashboard').style.display !== 'none') loadApprovals();
+}, 15000);
+</script>
+</body>
+</html>

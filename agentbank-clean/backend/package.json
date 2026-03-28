@@ -1,0 +1,25 @@
+{
+  "name": "@agentbank/backend",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@fastify/cors": "^9.0.1",
+    "@solana/web3.js": "^1.95.3",
+    "@supabase/supabase-js": "^2.99.3",
+    "bs58": "^5.0.0",
+    "dotenv": "^16.4.5",
+    "fastify": "^4.28.1",
+    "uuid": "^10.0.0",
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/uuid": "^10.0.0",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.5.4"
+  }
+}
