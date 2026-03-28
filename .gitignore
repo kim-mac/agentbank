@@ -1,5 +1,5 @@
 # Environment Variables (CRITICAL - NEVER commit secrets)
-.env
+# .env  # Temporarily commented out for Railway deployment
 .env.example
 .env.local
 .env.*.local
