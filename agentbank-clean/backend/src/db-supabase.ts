@@ -12,7 +12,7 @@
 //}
 
 //export const supabase = createClient(supabaseUrl, supabaseKey);
-
+//-------------------------------------------------------------------------------
 // db-supabase.ts — Supabase implementation
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
@@ -21,8 +21,8 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 let instance: SupabaseClient | null = null;
 
 /**
- * Returns the singleton Supabase client. 
- * Initialized only when first called to avoid "hoisting" errors in Railway.
+ * Singleton getter. 
+ * This prevents the app from crashing during the 'import' phase.
  */
 function getSupabase(): SupabaseClient {
   if (instance) return instance;
@@ -41,8 +41,7 @@ function getSupabase(): SupabaseClient {
   return instance;
 }
 
-// We export a proxy or a getter-based constant so your existing code doesn't break.
-export const supabase = getSupabase();
+// NOTE: We no longer export 'const supabase' at the top level to avoid immediate crashes.
 // ── Types (same as db.ts) ──────────────────────────────────────────────────
 
 export interface Operator {
