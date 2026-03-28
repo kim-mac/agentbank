@@ -30,8 +30,8 @@ RUN npm ci --only=production
 # Copy built application from builder
 COPY --from=builder /app/dist ./dist
 
-# Copy environment file (Railway will override with Variables panel values at runtime)
-COPY agentbank-clean/backend/.env .env 2>/dev/null || true
+# Copy environment file if it exists (Railway will override with Variables panel values at runtime)
+COPY agentbank-clean/backend/.env* ./
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
