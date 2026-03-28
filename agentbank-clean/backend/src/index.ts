@@ -1,10 +1,10 @@
-require('dotenv').config();
+
 console.log("ENV:", {
   url: process.env.SUPABASE_URL,
   key: process.env.SUPABASE_SERVICE_KEY ? "exists" : "missing"
 });
 
-//import "dotenv/config";
+import "dotenv/config";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { operatorRoutes } from "./routes/operator-routes";
