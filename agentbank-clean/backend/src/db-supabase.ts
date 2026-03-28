@@ -6,7 +6,7 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 let instance: SupabaseClient | null = null;
 
 /**
- * Singleton getter to prevent top-level initialization crashes.
+ * Singleton getter to prevent top-level initialization crashes in Railway.
  */
 function getSupabase(): SupabaseClient {
   if (instance) return instance;
@@ -83,7 +83,7 @@ export interface PaperTrade {
   memo?: string; openedAt: string; closedAt?: string;
 }
 
-// ── Mappers ───────────────────────────────────────────────────────────────
+// ── Row mappers ────────────────────────────────────────────────────────────
 
 function mapOperator(row: any): Operator {
   return { id: row.id, email: row.email, orgName: row.org_name, apiKey: row.api_key, createdAt: row.created_at };
@@ -184,6 +184,16 @@ export async function getAgentById(id: string): Promise<Agent | undefined> {
   return data ? mapAgent(data) : undefined;
 }
 
+export async function updateAgentStatus(id: string, status: Agent["status"]): Promise<void> {
+  await getSupabase().from("agents").update({ status }).eq("id", id);
+}
+
+export async function updateAgentPolicy(id: string, policy: Partial<Policy>): Promise<void> {
+  await getSupabase().from("agents").update(policy).eq("id", id);
+}
+
+// ── Transactions ───────────────────────────────────────────────────────────
+
 export async function createTransaction(data: any): Promise<Transaction> {
   const { data: row, error } = await getSupabase().from("transactions").insert({
     agent_id: data.agentId, chain: data.chain, from_address: data.fromAddress, to_address: data.toAddress, amount: data.amount, token: data.token, status: data.status,
@@ -192,10 +202,46 @@ export async function createTransaction(data: any): Promise<Transaction> {
   return mapTransaction(row);
 }
 
+export async function updateTransaction(id: string, updates: Partial<Transaction>): Promise<void> {
+  await getSupabase().from("transactions").update(updates).eq("id", id);
+}
+
+export async function getTransaction(id: string): Promise<Transaction | undefined> {
+  const { data } = await getSupabase().from("transactions").select().eq("id", id).single();
+  return data ? mapTransaction(data) : undefined;
+}
+
 export async function getAgentTransactions(agentId: string): Promise<Transaction[]> {
   const { data } = await getSupabase().from("transactions").select().eq("agent_id", agentId).order("created_at", { ascending: false });
   return (data || []).map(mapTransaction);
 }
+
+export async function getOperatorTransactions(operatorId: string): Promise<Transaction[]> {
+  const agents = await getOperatorAgents(operatorId);
+  const agentIds = agents.map((a) => a.id);
+  if (!agentIds.length) return [];
+  const { data } = await getSupabase().from("transactions").select().in("agent_id", agentIds).order("created_at", { ascending: false });
+  return (data || []).map(mapTransaction);
+}
+
+export async function getTodaySpend(agentId: string): Promise<number> {
+  const today = new Date().toISOString().split("T")[0];
+  const { data } = await getSupabase().from("transactions").select("amount").eq("agent_id", agentId).eq("status", "confirmed").gte("created_at", `${today}T00:00:00.000Z`);
+  return (data || []).reduce((sum: number, row: any) => sum + Number(row.amount), 0);
+}
+
+// ── Approval requests ──────────────────────────────────────────────────────
+
+export async function createApprovalRequest(txId: string, agentId: string, opId: string): Promise<void> {
+  await getSupabase().from("approval_requests").insert({ transaction_id: txId, agent_id: agentId, operator_id: opId });
+}
+
+export async function getPendingApprovals(operatorId: string): Promise<ApprovalRequest[]> {
+  const { data } = await getSupabase().from("approval_requests").select().eq("operator_id", operatorId).eq("status", "pending").order("created_at", { ascending: false });
+  return (data || []).map(mapApproval);
+}
+
+// ── Messages ───────────────────────────────────────────────────────────────
 
 export async function createMessage(data: any): Promise<Message> {
   const { data: row, error } = await getSupabase().from("messages").insert({
@@ -210,39 +256,24 @@ export async function getAgentMessages(agentId: string): Promise<Message[]> {
   return (data || []).map(mapMessage);
 }
 
-export async function getTodaySpend(agentId: string): Promise<number> {
-  const today = new Date().toISOString().split("T")[0];
-  const { data } = await getSupabase().from("transactions").select("amount").eq("agent_id", agentId).eq("status", "confirmed").gte("created_at", `${today}T00:00:00.000Z`);
-  return (data || []).reduce((sum: number, row: any) => sum + Number(row.amount), 0);
-}
-
-export async function updateAgentStatus(id: string, status: Agent["status"]): Promise<void> {
-  await getSupabase().from("agents").update({ status }).eq("id", id);
-}
-
-// ── Added missing exports for the errors you received ──────────────────────
-
-export async function updateAgentPolicy(id: string, policy: Partial<Policy>): Promise<void> {
-  await getSupabase().from("agents").update(policy).eq("id", id);
-}
-
-export async function updateTransaction(id: string, updates: Partial<Transaction>): Promise<void> {
-  await getSupabase().from("transactions").update(updates).eq("id", id);
-}
-
-export async function getTransaction(id: string): Promise<Transaction | undefined> {
-  const { data } = await getSupabase().from("transactions").select().eq("id", id).single();
-  return data ? mapTransaction(data) : undefined;
-}
-
-export async function createApprovalRequest(txId: string, agentId: string, opId: string): Promise<void> {
-  await getSupabase().from("approval_requests").insert({ transaction_id: txId, agent_id: agentId, operator_id: opId });
-}
-
 export async function markMessageRead(id: string): Promise<void> {
   await getSupabase().from("messages").update({ read_at: new Date().toISOString() }).eq("id", id);
 }
 
+// ── Paper Trading ──────────────────────────────────────────────────────────
+
+export async function createPaperTrade(data: any): Promise<PaperTrade> {
+  const { data: row, error } = await getSupabase().from("paper_trades").insert({
+    agent_id: data.agentId, token_symbol: data.tokenSymbol, token_id: data.tokenId, side: data.side, amount_token: data.amountToken, amount_sol: data.amountSol, price_usd: data.priceUsd,
+  }).select().single();
+  if (error) throw new Error(`createPaperTrade: ${error.message}`);
+  return mapPaperTrade(row);
+}
+
+export async function updateAgentPaperMode(id: string, paperMode: boolean, paperBalance: number): Promise<void> {
+  await getSupabase().from("agents").update({ paper_mode: paperMode, paper_balance: paperBalance }).eq("id", id);
+}
+
 export async function claimAgent(id: string): Promise<void> {
-  await getSupabase().from("agents").update({ claim_status: "claimed" }).eq("id", id);
+  await getSupabase().from("agents").update({ claim_status: "claimed", claimed_at: new Date().toISOString() }).eq("id", id);
 }
