@@ -4,6 +4,7 @@
 
 import * as db from "../db";
 import * as solana from "./solana";
+import * as base from "./base";
 
 export interface TransactionRequest {
   agentId:   string;
@@ -85,13 +86,22 @@ export async function evaluatePolicy(req: TransactionRequest): Promise<PolicyDec
 
   // Rule 8 — Balance threshold (auto-pause)
   if (p.balanceRule?.enabled) {
-    const balance = await solana.getBalance(agent.walletAddress);
-    if (balance.sol < p.balanceRule.minBalance) {
-      // Auto-pause the agent
+    let currentBalance: number;
+    let unit: string;
+    if (req.chain === "base") {
+      const bal = await base.getBalance(agent.walletAddress);
+      currentBalance = bal.eth;
+      unit = "ETH";
+    } else {
+      const bal = await solana.getBalance(agent.walletAddress);
+      currentBalance = bal.sol;
+      unit = "SOL";
+    }
+    if (currentBalance < p.balanceRule.minBalance) {
       await db.updateAgentStatus(req.agentId, "paused");
       return {
         result: "REJECTED",
-        reason: `Balance (${balance.sol.toFixed(4)} SOL) is below minimum threshold (${p.balanceRule.minBalance} SOL). Agent auto-paused.`,
+        reason: `Balance (${currentBalance.toFixed(4)} ${unit}) is below minimum threshold (${p.balanceRule.minBalance} ${unit}). Agent auto-paused.`,
       };
     }
   }

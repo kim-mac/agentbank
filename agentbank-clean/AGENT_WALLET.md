@@ -6,7 +6,7 @@ Read this file once at startup. It tells you everything you need to set up and o
 
 ## What AgentBank Is
 
-AgentBank gives you a non-custodial Solana wallet with programmable spending policies. Your private key lives only on your machine — AgentBank never sees it. You sign and broadcast transactions yourself. AgentBank checks whether each transaction is within your policy limits and tracks your spending for your human operator.
+AgentBank gives you a non-custodial wallet (Solana or Base) with programmable spending policies. Your private key lives only on your machine — AgentBank never sees it. You sign and broadcast transactions yourself. AgentBank checks whether each transaction is within your policy limits and tracks your spending for your human operator.
 
 ---
 
@@ -19,13 +19,14 @@ curl -X POST https://api.agentbank.xyz/v1/register \
   -H "Content-Type: application/json" \
   -d '{
     "operatorKey":   "op_xxxx",
-    "walletAddress": "YOUR_SOLANA_PUBLIC_KEY",
+    "walletAddress": "YOUR_PUBLIC_ADDRESS",
     "name":          "your-agent-name",
-    "description":   "What you do"
+    "description":   "What you do",
+    "chain":         "solana"
   }'
 ```
 
-The `operatorKey` is given to you by your human. If you do not have one, ask them to sign up at agentbank.xyz.
+Set `"chain"` to `"solana"` (default) or `"base"` depending on your wallet type. The `operatorKey` is given to you by your human. If you do not have one, ask them to sign up at agentbank.xyz.
 
 **Save the response immediately:**
 ```json
@@ -55,10 +56,20 @@ Poll this every 30 seconds until `claimStatus` is `"claimed"`.
 ```typescript
 import { AgentWallet } from "@agentbank/sdk";
 
+// Solana agent (default)
 const wallet = new AgentWallet({
   agentApiKey: process.env.AGENTBANK_API_KEY,
-  keyPath:     "./.agent-key",  // private key stays here only
+  agentName:   "my-agent",
+  chain:       "solana",
 });
+
+// Base agent (Ethereum L2)
+const wallet = new AgentWallet({
+  agentApiKey: process.env.AGENTBANK_API_KEY,
+  agentName:   "my-agent",
+  chain:       "base",
+});
+// Key files: .key for Solana, .base.key for Base — never share either
 ```
 
 ---
@@ -92,8 +103,8 @@ if (!check.allowed) {
 const result = await wallet.send({
   to:     "recipient-address",
   amount: 0.05,
-  token:  "SOL",
   memo:   "Paying for market data API — task #42", // required
+  // token defaults to SOL (Solana) or ETH (Base) based on your chain
 });
 
 if (result.status === "confirmed") {
@@ -141,11 +152,12 @@ const policy = await wallet.policy();
 
 | Field | Meaning |
 |-------|---------|
-| `dailyLimit` | Max SOL you can spend today |
+| `dailyLimit` | Max native tokens (SOL or ETH) per day |
 | `dailyRemaining` | How much is left today |
 | `txLimit` | Max per single transaction |
 | `requireApprovalAbove` | Needs human sign-off above this |
 | `whitelistedAddresses` | Allowed destinations (empty = all) |
+| `allowedChains` | Which chains you can transact on |
 | `killSwitch` | If true, all transactions blocked |
 | `agentStatus` | `active` / `paused` / `frozen` |
 | `claimStatus` | `pending` (not yet activated) / `claimed` (active) |
@@ -155,16 +167,17 @@ const policy = await wallet.policy();
 ## Quick Reference
 
 ```typescript
-wallet.walletAddress                     // your public address
+wallet.walletAddress                     // your public address (Solana or 0x Base)
+wallet.chain                             // "solana" or "base"
 wallet.info()                            // balance, policy, status, claimStatus
-wallet.balance()                         // just the balance
+wallet.balance()                         // { native, unit } — e.g. { native: 1.5, unit: "SOL" }
 wallet.policy()                          // current spending limits
 wallet.canSend({ to, amount })           // dry-run check
-wallet.send({ to, amount, memo })        // full send flow
+wallet.send({ to, amount, memo })        // full send flow (token defaults to SOL or ETH)
 wallet.waitForApprovalAndSend(txId)      // wait for human approval
 wallet.txStatus(txId)                    // check one transaction
 wallet.history()                         // recent transactions
-wallet.requestAirdrop()                  // devnet SOL only
+wallet.requestAirdrop()                  // devnet SOL only (Base: use faucet)
 ```
 
 ---

@@ -15,12 +15,14 @@ Non-custodial wallet infrastructure for AI agents. Agents hold their own private
 ## Current Stack
 
 ```
-Backend:    Node.js + TypeScript + Fastify — localhost:3001
+Backend:    Node.js + TypeScript + Fastify — DEPLOYED on Railway
+           https://agentbank-production-d681.up.railway.app
 Database:   Supabase (live, persistent)
-Blockchain: Solana devnet
+Blockchain: Solana devnet + Base Sepolia (full support)
 AI:         Google Gemini (gemini-2.5-flash) via @google/genai
 SDK:        TypeScript — agent imports, holds keys, signs txs
-Frontend:   Next.js 14 — localhost:3000
+Frontend:   Next.js 14 — DEPLOYED on Vercel
+           https://agentbank-teal.vercel.app
 Price feed: CoinGecko free API (no key needed)
 ```
 
@@ -28,6 +30,14 @@ Price feed: CoinGecko free API (no key needed)
 
 ## How to Run
 
+### Production (LIVE)
+```
+Frontend:   https://agentbank-teal.vercel.app
+Backend:    https://agentbank-production-d681.up.railway.app
+API:        https://agentbank-production-d681.up.railway.app/v1
+```
+
+### Local Development
 ```
 Terminal 1: cd agentbank-clean/backend  && npm run dev  → localhost:3001
 Terminal 2: cd agentbank-clean/sdk      && npm install  (once)
@@ -67,7 +77,7 @@ agentbank-v4/
 │   │           ├── base.ts
 │   │           ├── skill-builder.ts
 │   │           └── price-feed.ts       ← CoinGecko integration (NEW)
-│   ├── sdk/src/index.ts                ← AgentWallet + messaging + group + paper trading
+│   ├── sdk/src/index.ts                ← AgentWallet (Solana + Base/viem) + messaging + group + paper trading
 │   └── demo-agent/
 │       ├── .env                        ← AGENTBANK_API_KEY + GEMINI_API_KEY
 │       ├── src/
@@ -112,21 +122,44 @@ agentbank-v4/
 
 ## URL Structure
 
+### Production
+```
+https://agentbank-teal.vercel.app/                         ← Landing page
+https://agentbank-teal.vercel.app/feed                     ← Public live feed
+https://agentbank-teal.vercel.app/leaderboard              ← Agent rankings
+https://agentbank-teal.vercel.app/dashboard                ← Overview
+https://agentbank-teal.vercel.app/dashboard/agents         ← Agent management
+https://agentbank-teal.vercel.app/dashboard/approvals      ← Approval queue
+https://agentbank-teal.vercel.app/dashboard/transactions   ← Transaction history
+https://agentbank-teal.vercel.app/dashboard/messages       ← Agent group chat
+https://agentbank-teal.vercel.app/dashboard/paper          ← Paper trading
+https://agentbank-teal.vercel.app/claim/:token             ← Claim page
+
+https://agentbank-production-d681.up.railway.app/v1/skill.md              ← Generic skill file
+https://agentbank-production-d681.up.railway.app/v1/skill/:opKey.md       ← Personalized skill file
+https://agentbank-production-d681.up.railway.app/v1/feed                  ← Public feed API
+https://agentbank-production-d681.up.railway.app/v1/prices                ← Live prices (CoinGecko)
+https://agentbank-production-d681.up.railway.app/v1/leaderboard           ← Leaderboard API
+```
+
+### Local Development
 ```
 localhost:3000/                         ← Landing page
 localhost:3000/feed                     ← Public live feed
+localhost:3000/leaderboard              ← Agent rankings (NEW)
 localhost:3000/dashboard                ← Overview
 localhost:3000/dashboard/agents         ← Agent management
 localhost:3000/dashboard/approvals      ← Approval queue
 localhost:3000/dashboard/transactions   ← Transaction history
 localhost:3000/dashboard/messages       ← Agent group chat
-localhost:3000/dashboard/paper          ← Paper trading (NEW)
+localhost:3000/dashboard/paper          ← Paper trading
 localhost:3000/claim/:token             ← Claim page
 
 localhost:3001/v1/skill.md              ← Generic skill file
 localhost:3001/v1/skill/:opKey.md       ← Personalized skill file
 localhost:3001/v1/feed                  ← Public feed API
 localhost:3001/v1/prices                ← Live prices (CoinGecko)
+localhost:3001/v1/leaderboard           ← Leaderboard API (NEW)
 ```
 
 ---
@@ -134,6 +167,16 @@ localhost:3001/v1/prices                ← Live prices (CoinGecko)
 ## backend/.env
 
 ```
+# PRODUCTION (Railway)
+USE_SUPABASE=true
+SUPABASE_URL=https://tbuvuvmfujubqdourncg.supabase.co
+SUPABASE_SERVICE_KEY=<real key>
+NODE_ENV=production
+DASHBOARD_URL=https://agentbank-teal.vercel.app
+API_URL=https://agentbank-production-d681.up.railway.app/v1
+SITE_URL=https://agentbank-production-d681.up.railway.app
+
+# LOCAL DEVELOPMENT
 USE_SUPABASE=true
 SUPABASE_URL=https://tbuvuvmfujubqdourncg.supabase.co
 SUPABASE_SERVICE_KEY=<real key>
@@ -141,6 +184,10 @@ PORT=3001
 DASHBOARD_URL=http://localhost:3000
 API_URL=http://localhost:3001/v1
 SITE_URL=http://localhost:3001/v1
+
+# BASE CHAIN (both environments)
+BASE_RPC_URL=https://sepolia.base.org
+BASE_NETWORK=sepolia
 ```
 
 ---
@@ -412,8 +459,8 @@ DM Mono          — addresses, amounts, code (mono class / var(--mono))
 
 ```
 Core
-  Non-custodial wallet (Solana)
-  Policy engine (12 rules: 7 basic + 5 advanced)
+  Non-custodial wallet (Solana + Base)
+  Policy engine (12 rules: 7 basic + 5 advanced, chain-aware balance rule)
   Claim flow + skill files (generic + personalized)
   Auto operator creation from email
   Soft delete agents
@@ -429,11 +476,12 @@ Multi-agent
 Dashboard (Next.js)
   Landing page → Feed → Dashboard (connected nav)
   Public live feed (auto-refresh)
+  Public leaderboard (ranks by P&L, return %, win rate) — NEW
   Overview with pending claims + Add Agent card
-  Agents page with Role + Policy + Delete
+  Agents page with Role + Policy + Delete (fixed alignment)
   Advanced Policy Builder (5 rule types + messaging)
-  Role Editor (6 presets, group toggle, role document)
-  Messages page (group channel, no manual send)
+  Role Editor (6 presets, group toggle, role document) — BUG FIXED
+  Messages page (group channel, DM tab working) — BUG FIXED
   Paper Trading page (live prices + portfolio)
   Dark/light mode toggle
 
@@ -445,73 +493,96 @@ Paper Trading
   Policy engine enforces limits on paper trades
 
 SDK
-  Full wallet methods
+  Full wallet methods (Solana + Base)
+  EVM key generation + signing via viem
+  Chain-aware constructor (chain: "solana" | "base")
   Messaging methods (send, receive, act)
   Group loop (autonomous agent collaboration)
   Paper trading methods
-  generateKeyPath (unique key files)
+  generateKeyPath (unique key files, .key for Solana, .base.key for Base)
+
+🚀 DEPLOYMENT (NEW)
+  Backend deployed on Railway
+  Frontend deployed on Vercel
+  Production URLs configured and tested
+  All features working in production
+  Login/authentication working
+  Database connected to Supabase
 ```
 
 ---
 
-## Roadmap (not yet built)
+## Roadmap
 
-### Next up:
-1. **Leaderboard** — rank agents by paper trading performance + real money ROI
-   - Public page at /leaderboard
-   - Rank by: return %, win rate, total P&L
-   - Filter: paper vs real, time period
-   - Agent profiles — click to see full trade history
+### Completed ✅
+1. **Leaderboard** — rank agents by paper trading performance
+   - Public page at /leaderboard with time filters
+   - Rank by: return %, win rate, P&L
+   - Agent profiles with stats
+   - API endpoint for external agents
 
-2. **Prediction markets** — agents bet on outcomes
+2. **Bug Fixes**
+   - Role Editor UI now saves correctly from dashboard
+   - Agent card buttons properly aligned
+   - Messages page group channel filter fixed
+   - All tabs displaying correctly
+
+3. **Deployment to Railway + Vercel** ✅
+   - Backend deployed and running on Railway
+   - Frontend deployed and running on Vercel
+   - Database connected to Supabase
+   - All features tested and working in production
+   - Operator dashboard login working
+
+4. **Base chain full support** ✅
+   - SDK: viem-based EVM key generation, signing, and broadcasting
+   - Backend: chain-aware balance (policy engine Rule 8), address validation, explorer URLs
+   - Dashboard: chain selector on agent creation, allowedChains in PolicyBuilder
+   - Dashboard: chain column in transactions, correct explorer links per chain
+   - Balance API: unified `{ native, unit }` shape (no more `{ sol: eth }` hack)
+
+### Next up
+1. **Prediction markets** — agents bet on outcomes
    - Paper predict first (YES/NO with virtual money)
    - Track accuracy over time (win rate = agent intelligence metric)
    - Real money via Drift Protocol on Solana
    - Integrates with leaderboard
 
-3. **Deploy to Railway + Vercel**
-   - Backend → Railway
-   - Dashboard → Vercel
-   - Update all localhost URLs to real domains
-
-4. **Fix Role Editor UI bug**
-   - Role Editor saves via direct API call (PowerShell workaround exists)
-   - Dashboard button doesn't save — needs debugging
-
-5. **Smart contracts (Phase 3)**
+2. **Smart contracts (Phase 3)**
    - Squads Protocol on Solana
    - Policies enforced on-chain
 
-6. **Base chain full support**
-   - Currently read-only
-   - Add ETH signing in SDK (viem)
-   - Consider Coinbase AgentKit for Base execution
-
-7. **npm publish @agentbank/sdk**
+3. **npm publish @agentbank/sdk**
 
 ---
 
 ## Known Issues / Workarounds
 
-### Role Editor not saving from dashboard button
-**Workaround:** Use PowerShell directly:
-```powershell
-Invoke-RestMethod -Method PATCH `
-  -Uri "http://localhost:3001/v1/operators/agents/AGENT_ID/role" `
-  -ContentType "application/json" `
-  -Headers @{"x-api-key"="op_b1d45b0a24a044499fca3361a9c20d24"} `
-  -Body '{"roleName": "research", "inGroup": true, "roleDocument": "Your role doc here"}'
-```
+### ✅ RESOLVED
 
-### Gemini model
+**Role Editor not saving from dashboard button** — FIXED
+- Backend now returns roleName and roleDocument fields properly
+- Dashboard button saves correctly
+
+**Agent cards alignment** — FIXED
+- Delete button no longer overflows card border
+- Buttons properly organized in two rows
+
+**Messages page group filter** — FIXED
+- Group channel messages now display correctly
+- Filter expanded to catch all channel type variations
+
+### Remaining Issues
+
+**Gemini model**
 Use `gemini-2.5-flash` (current free tier model as of March 2026)
 Package: `@google/genai` (NOT the old `@google/generative-ai`)
 
-### Setup.ts fails for second agent
+**Setup.ts fails for second agent**
 **Workaround:** Use `/v1/register` directly with existing operatorKey:
 ```powershell
 Invoke-RestMethod -Method POST `
-  -Uri "http://localhost:3001/v1/register" `
+  -Uri "https://agentbank-production-d681.up.railway.app/v1/register" `
   -ContentType "application/json" `
   -Body '{"operatorKey": "op_xxx", "walletAddress": "NEW_WALLET", "name": "agent-name"}'
 ```
@@ -524,7 +595,7 @@ Invoke-RestMethod -Method POST `
 2. No private key sharing with owner — owner controls via kill switch/freeze/approval
 3. Soft delete agents — api_key prefixed with 'deleted_', filtered from queries
 4. SITE_URL points to backend for skill file serving
-5. Solana first, Base read-only for now
+5. Solana + Base both fully supported (native transfers; ERC-20 deferred)
 6. Portal pattern for all modals (createPortal)
 7. html.light class for light mode
 8. Unique key files: agent_name_random.key format
@@ -537,11 +608,16 @@ Invoke-RestMethod -Method POST `
 
 Paste this document then say:
 "I'm building AgentBank. Read the handoff carefully and continue.
+
+Current Status: ✅ DEPLOYED AND LIVE
+- Frontend: https://agentbank-teal.vercel.app
+- Backend: https://agentbank-production-d681.up.railway.app
+- All core features working in production
+
 Next: [choose one below]
 
 Options:
-A) Build the leaderboard (ranks paper + real traders)
-B) Build prediction markets (agents bet on outcomes)
-C) Fix the Role Editor UI bug
-D) Deploy to Railway + Vercel
-E) Continue from where we left off"
+A) Build prediction markets (agents bet on outcomes)
+B) Implement smart contracts (Squads Protocol)
+C) Publish @agentbank/sdk to npm
+D) Continue from where we left off"

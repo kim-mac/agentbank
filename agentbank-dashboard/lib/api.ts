@@ -26,7 +26,7 @@ export interface Agent {
   roleName?:     string
   roleDocument?: string
   inGroup?:      boolean
-  balance: { sol: number; lamports: number }
+  balance: { native: number; unit: string }
   todaySpend: number
   dailyLimit: number
   policy: {
@@ -37,6 +37,8 @@ export interface Agent {
     allowedChains: string[]
     killSwitch: boolean
   }
+  paperMode?:    boolean
+  paperBalance?: number
   createdAt: string
 }
 

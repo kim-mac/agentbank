@@ -102,11 +102,13 @@ function TxCard({ tx, index }: { tx: FeedTx; index: number }) {
             </span>
             {tx.txHash && (
               <a
-                href={`https://explorer.solana.com/tx/${tx.txHash}?cluster=devnet`}
+                href={tx.chain === 'base'
+                  ? `https://sepolia.basescan.org/tx/${tx.txHash}`
+                  : `https://explorer.solana.com/tx/${tx.txHash}?cluster=devnet`}
                 target="_blank" rel="noopener noreferrer"
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--accent)', textDecoration: 'none' }}
               >
-                <ExternalLink size={10} /> View on explorer
+                <ExternalLink size={10} /> View on {tx.chain === 'base' ? 'BaseScan' : 'Solana Explorer'}
               </a>
             )}
           </div>

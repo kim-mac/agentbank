@@ -1,12 +1,12 @@
 // AgentBank SDK — Non-custodial wallet for AI agents
 //
 // HOW IT WORKS:
-//   1. First run: generates a Solana keypair locally, saves to .agent-key
+//   1. First run: generates a keypair locally (Solana Ed25519 or EVM secp256k1)
 //   2. Registers its PUBLIC address with AgentBank (private key never sent)
 //   3. For every transaction:
 //      a. Ask AgentBank: is this allowed? (policy check)
 //      b. If yes: sign the tx locally with our own keypair
-//      c. Broadcast the signed tx directly to Solana
+//      c. Broadcast the signed tx directly to the chain
 //      d. Report the txHash back to AgentBank for audit tracking
 //
 // AgentBank never sees the private key. Ever.
@@ -21,11 +21,24 @@ import {
   LAMPORTS_PER_SOL,
   clusterApiUrl,
 } from "@solana/web3.js";
+import {
+  createPublicClient,
+  createWalletClient,
+  http,
+  parseEther,
+  type PublicClient,
+  type WalletClient,
+  type Account,
+} from "viem";
+import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
+import { baseSepolia, base } from "viem/chains";
 import bs58 from "bs58";
 import * as fs from "fs";
 import * as path from "path";
 
 const DEFAULT_API_URL = process.env.AGENTBANK_URL || "http://localhost:3001/v1";
+
+export type SupportedChain = "solana" | "base";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -34,7 +47,7 @@ export interface WalletInfo {
   agentName:     string;
   walletAddress: string;
   chain:         string;
-  balance:       { sol: number; lamports: number };
+  balance:       { native: number; unit: string };
   policy: {
     dailyLimit:           number;
     dailySpent:           number;
@@ -77,85 +90,118 @@ export interface TransactionStatus {
 
 // ── Key management — stays on this machine only ────────────────────────────
 
-// Generate a unique key filename: agent_name_randomchars
-// e.g. agent_trading-bot_a3f9k2.key
-// This ensures multiple agents on the same machine never overwrite each other
-export function generateKeyPath(agentName: string, dir = "."): string {
+// Generate a unique key filename: agent_name_randomchars.key (Solana) or .base.key (Base)
+export function generateKeyPath(agentName: string, dir = ".", chain: SupportedChain = "solana"): string {
   const safe    = agentName.toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 30);
-  const random  = Math.random().toString(36).slice(2, 8); // 6 random chars
-  return path.join(dir, `agent_${safe}_${random}.key`);
+  const random  = Math.random().toString(36).slice(2, 8);
+  const ext     = chain === "base" ? ".base.key" : ".key";
+  return path.join(dir, `agent_${safe}_${random}${ext}`);
 }
 
-function loadOrCreateKeypair(keyPath: string): Keypair {
+function loadOrCreateSolanaKeypair(keyPath: string): Keypair {
   const resolved = path.resolve(keyPath);
   if (fs.existsSync(resolved)) {
     const stored = fs.readFileSync(resolved, "utf-8").trim();
     return Keypair.fromSecretKey(bs58.decode(stored));
   }
-  // First run — generate fresh keypair and save locally
   const keypair = Keypair.generate();
   fs.mkdirSync(path.dirname(resolved), { recursive: true });
-  fs.writeFileSync(resolved, bs58.encode(keypair.secretKey), { mode: 0o600 }); // owner read-only
-  console.log("[AgentWallet] New keypair generated");
+  fs.writeFileSync(resolved, bs58.encode(keypair.secretKey), { mode: 0o600 });
+  console.log("[AgentWallet] New Solana keypair generated");
   console.log(`[AgentWallet] Public address : ${keypair.publicKey.toString()}`);
   console.log(`[AgentWallet] Private key saved to: ${resolved}`);
   console.log("[AgentWallet] Keep this file safe — it controls your funds");
   return keypair;
 }
 
+function loadOrCreateEvmAccount(keyPath: string): Account {
+  const resolved = path.resolve(keyPath);
+  if (fs.existsSync(resolved)) {
+    const stored = fs.readFileSync(resolved, "utf-8").trim() as `0x${string}`;
+    return privateKeyToAccount(stored);
+  }
+  const privateKey = generatePrivateKey();
+  fs.mkdirSync(path.dirname(resolved), { recursive: true });
+  fs.writeFileSync(resolved, privateKey, { mode: 0o600 });
+  const account = privateKeyToAccount(privateKey);
+  console.log("[AgentWallet] New EVM keypair generated");
+  console.log(`[AgentWallet] Public address : ${account.address}`);
+  console.log(`[AgentWallet] Private key saved to: ${resolved}`);
+  console.log("[AgentWallet] Keep this file safe — it controls your funds");
+  return account;
+}
+
 // ── AgentWallet ────────────────────────────────────────────────────────────
 
 export class AgentWallet {
   private agentApiKey: string;
-  private baseUrl:     string;
-  private keypair:     Keypair;
-  private connection:  Connection;
+  private apiUrl:      string;
+  readonly chain:      SupportedChain;
+
+  // Solana (populated when chain === "solana")
+  private solKeypair?:    Keypair;
+  private solConnection?: Connection;
+
+  // EVM / Base (populated when chain === "base")
+  private evmAccount?:      Account;
+  private evmWalletClient?: WalletClient;
+  private evmPublicClient?: PublicClient;
 
   constructor(config: {
-    agentApiKey:  string;   // from AgentBank registration
-    keyPath?:     string;   // local file to store private key
-                            // if omitted, auto-generates: agent_name_random.key
-    agentName?:   string;   // used for auto key naming (e.g. "trading-bot")
-    keyDir?:      string;   // directory for auto-named key (default: ".")
-    baseUrl?:     string;   // AgentBank API URL
-    rpcUrl?:      string;   // Solana RPC (default: devnet)
+    agentApiKey:  string;
+    chain?:       SupportedChain;
+    keyPath?:     string;
+    agentName?:   string;
+    keyDir?:      string;
+    baseUrl?:     string;
+    rpcUrl?:      string;
+    baseNetwork?: "sepolia" | "mainnet";
   }) {
     if (!config.agentApiKey) throw new Error("agentApiKey is required");
     this.agentApiKey = config.agentApiKey;
-    this.baseUrl     = config.baseUrl || DEFAULT_API_URL;
+    this.apiUrl      = config.baseUrl || DEFAULT_API_URL;
+    this.chain       = config.chain || "solana";
 
-    // Determine key path:
-    // 1. Explicit keyPath → use as-is
-    // 2. agentName provided → auto-generate: agent_name_random.key
-    // 3. Neither → fall back to .agent-key (backwards compatible)
+    const keyDir  = config.keyDir || ".";
+    const keyExt  = this.chain === "base" ? ".base.key" : ".key";
+
     let resolvedKeyPath: string;
     if (config.keyPath) {
       resolvedKeyPath = config.keyPath;
     } else if (config.agentName) {
-      resolvedKeyPath = generateKeyPath(config.agentName, config.keyDir || ".");
-      // But if a key already exists for this agent, find it
-      const dir   = path.resolve(config.keyDir || ".");
+      const dir   = path.resolve(keyDir);
       const name  = config.agentName.toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 30);
       const existing = fs.existsSync(dir)
-        ? fs.readdirSync(dir).find(f => f.startsWith(`agent_${name}_`) && f.endsWith(".key"))
+        ? fs.readdirSync(dir).find(f => f.startsWith(`agent_${name}_`) && f.endsWith(keyExt))
         : undefined;
-      if (existing) resolvedKeyPath = path.join(dir, existing);
+      resolvedKeyPath = existing
+        ? path.join(dir, existing)
+        : generateKeyPath(config.agentName, keyDir, this.chain);
     } else {
-      resolvedKeyPath = "./.agent-key";
+      resolvedKeyPath = this.chain === "base" ? "./.agent-base-key" : "./.agent-key";
     }
 
-    this.keypair    = loadOrCreateKeypair(resolvedKeyPath);
-    this.connection = new Connection(config.rpcUrl || clusterApiUrl("devnet"), "confirmed");
+    if (this.chain === "base") {
+      this.evmAccount = loadOrCreateEvmAccount(resolvedKeyPath);
+      const network     = config.baseNetwork === "mainnet" ? base : baseSepolia;
+      const rpc         = config.rpcUrl || (config.baseNetwork === "mainnet" ? "https://mainnet.base.org" : "https://sepolia.base.org");
+      this.evmPublicClient = createPublicClient({ chain: network, transport: http(rpc) });
+      this.evmWalletClient = createWalletClient({ account: this.evmAccount, chain: network, transport: http(rpc) });
+    } else {
+      this.solKeypair    = loadOrCreateSolanaKeypair(resolvedKeyPath);
+      this.solConnection = new Connection(config.rpcUrl || clusterApiUrl("devnet"), "confirmed");
+    }
   }
 
   get walletAddress(): string {
-    return this.keypair.publicKey.toString();
+    if (this.chain === "base") return this.evmAccount!.address;
+    return this.solKeypair!.publicKey.toString();
   }
 
   // ── Internal API helper ────────────────────────────────────────────────
 
   private async api<T>(method: string, endpoint: string, body?: object): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${endpoint}`, {
+    const res = await fetch(`${this.apiUrl}${endpoint}`, {
       method,
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${this.agentApiKey}` },
       ...(body && { body: JSON.stringify(body) }),
@@ -181,9 +227,10 @@ export class AgentWallet {
 
   // Dry-run: check if a send would be approved without signing anything
   async canSend(params: { to: string; amount: number; token?: string; memo?: string }) {
+    const defaultToken = this.chain === "base" ? "ETH" : "SOL";
     return this.api<{ allowed: boolean; decision: string; reason?: string }>(
       "POST", "/agent/wallet/check",
-      { toAddress: params.to, amount: params.amount, token: params.token || "SOL", memo: params.memo }
+      { toAddress: params.to, amount: params.amount, token: params.token || defaultToken, memo: params.memo }
     );
   }
 
@@ -195,9 +242,10 @@ export class AgentWallet {
     to:     string;
     amount: number;
     token?: string;
-    memo:   string; // required — agent must explain every transaction
+    memo:   string;
   }): Promise<SendResult> {
-    const token = params.token || "SOL";
+    const defaultToken = this.chain === "base" ? "ETH" : "SOL";
+    const token = params.token || defaultToken;
 
     const request = await this.api<any>("POST", "/agent/wallet/request", {
       toAddress: params.to, amount: params.amount, token, memo: params.memo,
@@ -218,7 +266,9 @@ export class AgentWallet {
 
     if (request.status === "approved") {
       try {
-        const txHash  = await this._signAndBroadcast(params.to, params.amount);
+        const txHash = this.chain === "base"
+          ? await this._signAndBroadcastEvm(params.to, params.amount)
+          : await this._signAndBroadcastSolana(params.to, params.amount);
         const confirm = await this.api<any>("POST", "/agent/wallet/confirm", {
           transactionId: request.transactionId, txHash,
         });
@@ -236,8 +286,8 @@ export class AgentWallet {
     transactionId: string,
     options: { timeoutMs?: number; pollIntervalMs?: number } = {}
   ): Promise<SendResult> {
-    const timeout  = options.timeoutMs      || 10 * 60 * 1000; // 10 min
-    const interval = options.pollIntervalMs || 5_000;           // 5s
+    const timeout  = options.timeoutMs      || 10 * 60 * 1000;
+    const interval = options.pollIntervalMs || 5_000;
     const start    = Date.now();
 
     console.log(`[AgentWallet] Waiting for operator approval: ${transactionId}`);
@@ -252,7 +302,9 @@ export class AgentWallet {
       if (tx.status === "approved") {
         console.log("[AgentWallet] Approved — signing and broadcasting");
         try {
-          const txHash  = await this._signAndBroadcast(tx.toAddress, tx.amount);
+          const txHash = this.chain === "base"
+            ? await this._signAndBroadcastEvm(tx.toAddress, tx.amount)
+            : await this._signAndBroadcastSolana(tx.toAddress, tx.amount);
           const confirm = await this.api<any>("POST", "/agent/wallet/confirm", { transactionId, txHash });
           return { status: "confirmed", transactionId, txHash, explorerUrl: confirm.explorerUrl };
         } catch (err: any) {
@@ -428,28 +480,46 @@ export class AgentWallet {
     console.log("[AgentWallet] Group loop ended (max rounds reached)");
   }
 
-  async requestAirdrop(amountSol = 1): Promise<string> {
-    const sig = await this.connection.requestAirdrop(this.keypair.publicKey, amountSol * LAMPORTS_PER_SOL);
-    await this.connection.confirmTransaction(sig);
-    console.log(`[AgentWallet] Airdropped ${amountSol} devnet SOL`);
+  async requestAirdrop(amount = 1): Promise<string> {
+    if (this.chain === "base") {
+      console.log("[AgentWallet] Base Sepolia faucets: https://www.coinbase.com/faucets/base-ethereum-goerli-faucet");
+      throw new Error("Airdrop not available on Base. Use a faucet: https://www.coinbase.com/faucets/base-ethereum-goerli-faucet");
+    }
+    const sig = await this.solConnection!.requestAirdrop(this.solKeypair!.publicKey, amount * LAMPORTS_PER_SOL);
+    await this.solConnection!.confirmTransaction(sig);
+    console.log(`[AgentWallet] Airdropped ${amount} devnet SOL`);
     return sig;
   }
 
-  // ── Private: sign and broadcast — private key never leaves this method ──
+  // ── Private: sign and broadcast — private key never leaves these methods ──
 
-  private async _signAndBroadcast(toAddress: string, amountSol: number): Promise<string> {
+  private async _signAndBroadcastSolana(toAddress: string, amountSol: number): Promise<string> {
     const toPubkey = new PublicKey(toAddress);
     const lamports = Math.round(amountSol * LAMPORTS_PER_SOL);
-    const { blockhash } = await this.connection.getLatestBlockhash();
+    const { blockhash } = await this.solConnection!.getLatestBlockhash();
 
     const tx        = new Transaction();
     tx.recentBlockhash = blockhash;
-    tx.feePayer        = this.keypair.publicKey;
-    tx.add(SystemProgram.transfer({ fromPubkey: this.keypair.publicKey, toPubkey, lamports }));
+    tx.feePayer        = this.solKeypair!.publicKey;
+    tx.add(SystemProgram.transfer({ fromPubkey: this.solKeypair!.publicKey, toPubkey, lamports }));
 
-    // Sign with our own keypair — never leaves this process
-    const txHash = await sendAndConfirmTransaction(this.connection, tx, [this.keypair]);
-    console.log(`[AgentWallet] Broadcast confirmed: ${txHash}`);
+    const txHash = await sendAndConfirmTransaction(this.solConnection!, tx, [this.solKeypair!]);
+    console.log(`[AgentWallet] Solana broadcast confirmed: ${txHash}`);
+    return txHash;
+  }
+
+  private async _signAndBroadcastEvm(toAddress: string, amountEth: number): Promise<string> {
+    const txHash = await this.evmWalletClient!.sendTransaction({
+      to:    toAddress as `0x${string}`,
+      value: parseEther(String(amountEth)),
+      chain: this.evmWalletClient!.chain,
+      account: this.evmAccount!,
+    });
+
+    const receipt = await this.evmPublicClient!.waitForTransactionReceipt({ hash: txHash });
+    if (receipt.status !== "success") throw new Error(`EVM transaction reverted: ${txHash}`);
+
+    console.log(`[AgentWallet] Base broadcast confirmed: ${txHash}`);
     return txHash;
   }
 }

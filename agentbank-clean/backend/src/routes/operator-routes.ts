@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import { requireOperator } from "../middleware/auth";
 import * as db from "../db";
 import * as solana from "../services/solana";
+import * as base from "../services/base";
 
 export async function operatorRoutes(app: FastifyInstance) {
 
@@ -20,6 +21,7 @@ export async function operatorRoutes(app: FastifyInstance) {
     if (!walletAddress) return reply.status(400).send({ error: "walletAddress is required" });
     const txChain = chain || "solana";
     if (txChain === "solana" && !solana.isValidSolanaAddress(walletAddress)) return reply.status(400).send({ error: "Invalid Solana address" });
+    if (txChain === "base"   && !base.isValidBaseAddress(walletAddress))     return reply.status(400).send({ error: "Invalid Base address" });
     const defaultPolicy: db.Policy = {
       dailyLimit:           policy?.dailyLimit           ?? 1.0,
       txLimit:              policy?.txLimit               ?? 0.1,
@@ -35,8 +37,15 @@ export async function operatorRoutes(app: FastifyInstance) {
   app.get("/operators/agents", { preHandler: requireOperator }, async (req, reply) => {
     const agents = await db.getOperatorAgents(req.operator!.id);
     const enriched = await Promise.all(agents.map(async (agent) => {
-      const balance = agent.chain === "solana" ? await solana.getBalance(agent.walletAddress) : { sol: 0, lamports: 0 };
-      return { id: agent.id, name: agent.name, description: agent.description, walletAddress: agent.walletAddress, chain: agent.chain, status: agent.status, roleName: agent.roleName, roleDocument: agent.roleDocument, inGroup: agent.inGroup || false, balance, todaySpend: await db.getTodaySpend(agent.id), dailyLimit: agent.policy.dailyLimit, policy: agent.policy, createdAt: agent.createdAt };
+      let balance: { native: number; unit: string };
+      if (agent.chain === "base") {
+        const bal = await base.getBalance(agent.walletAddress);
+        balance = { native: bal.eth, unit: "ETH" };
+      } else {
+        const bal = await solana.getBalance(agent.walletAddress);
+        balance = { native: bal.sol, unit: "SOL" };
+      }
+      return { id: agent.id, name: agent.name, description: agent.description, walletAddress: agent.walletAddress, chain: agent.chain, status: agent.status, roleName: agent.roleName, roleDocument: agent.roleDocument, inGroup: agent.inGroup || false, balance, todaySpend: await db.getTodaySpend(agent.id), dailyLimit: agent.policy.dailyLimit, policy: agent.policy, createdAt: agent.createdAt, paperMode: (agent as any).paperMode, paperBalance: (agent as any).paperBalance };
     }));
     return reply.send({ agents: enriched });
   });

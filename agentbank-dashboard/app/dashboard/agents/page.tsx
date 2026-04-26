@@ -68,13 +68,13 @@ function AgentCard({ agent, apiKey, onRefresh }: { agent: Agent; apiKey: string;
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
           <div style={{ background: 'var(--surface2)', borderRadius: 8, padding: '10px 12px' }}>
             <div style={{ fontSize: 10, color: 'var(--muted2)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Balance</div>
-            <div style={{ fontSize: 18, fontWeight: 500, fontFamily: 'var(--mono)', color: 'var(--text)' }}>{agent.balance.sol.toFixed(4)}</div>
-            <div style={{ fontSize: 10, color: 'var(--muted2)' }}>SOL</div>
+            <div style={{ fontSize: 18, fontWeight: 500, fontFamily: 'var(--mono)', color: 'var(--text)' }}>{agent.balance.native.toFixed(4)}</div>
+            <div style={{ fontSize: 10, color: 'var(--muted2)' }}>{agent.balance.unit}</div>
           </div>
           <div style={{ background: 'var(--surface2)', borderRadius: 8, padding: '10px 12px' }}>
             <div style={{ fontSize: 10, color: 'var(--muted2)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Today</div>
             <div style={{ fontSize: 18, fontWeight: 500, fontFamily: 'var(--mono)', color: 'var(--text)' }}>{agent.todaySpend.toFixed(4)}</div>
-            <div style={{ fontSize: 10, color: 'var(--muted2)' }}>of {agent.dailyLimit} SOL</div>
+            <div style={{ fontSize: 10, color: 'var(--muted2)' }}>of {agent.dailyLimit} {agent.balance.unit}</div>
           </div>
         </div>
 
@@ -210,12 +210,21 @@ export default function AgentsPage() {
                 </div>
               ))}
             </div>
-            <div style={{ marginTop: 12 }}>
-              <label style={{ fontSize: 10, color: 'var(--muted2)', marginBottom: 5, display: 'block', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Wallet Address (public key)</label>
-              <input className="input" placeholder="Solana public key" value={form.walletAddress} onChange={e => setForm(f => ({ ...f, walletAddress: e.target.value }))} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+              <div>
+                <label style={{ fontSize: 10, color: 'var(--muted2)', marginBottom: 5, display: 'block', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Chain</label>
+                <select className="input" value={form.chain} onChange={e => setForm(f => ({ ...f, chain: e.target.value }))} style={{ width: '100%' }}>
+                  <option value="solana">Solana</option>
+                  <option value="base">Base (Ethereum L2)</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: 10, color: 'var(--muted2)', marginBottom: 5, display: 'block', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Wallet Address</label>
+                <input className="input" placeholder={form.chain === 'base' ? '0x... Base address' : 'Solana public key'} value={form.walletAddress} onChange={e => setForm(f => ({ ...f, walletAddress: e.target.value }))} />
+              </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginTop: 12 }}>
-              {[['Daily Limit (SOL)', 'dailyLimit'], ['TX Limit (SOL)', 'txLimit'], ['Approval Above (SOL)', 'approvalAbove']].map(([l, k]) => (
+              {[[`Daily Limit (${form.chain === 'base' ? 'ETH' : 'SOL'})`, 'dailyLimit'], [`TX Limit (${form.chain === 'base' ? 'ETH' : 'SOL'})`, 'txLimit'], [`Approval Above (${form.chain === 'base' ? 'ETH' : 'SOL'})`, 'approvalAbove']].map(([l, k]) => (
                 <div key={k}>
                   <label style={{ fontSize: 10, color: 'var(--muted2)', marginBottom: 5, display: 'block', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{l}</label>
                   <input className="input" type="number" step="0.1" value={(form as any)[k]} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))} />

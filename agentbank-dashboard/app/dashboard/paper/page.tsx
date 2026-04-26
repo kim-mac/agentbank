@@ -224,7 +224,7 @@ export default function PaperTradingPage() {
                   </div>
                   {isPaper && (
                     <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--mono)', marginBottom: 8 }}>
-                      {balance.toFixed(4)} SOL virtual
+                      {balance.toFixed(4)} {agent.chain === 'base' ? 'ETH' : 'SOL'} virtual
                     </div>
                   )}
                   <button
@@ -256,7 +256,7 @@ export default function PaperTradingPage() {
                 {/* Stats */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 14 }}>
                   {[
-                    ['Virtual Balance', `${portfolio.paperBalance.toFixed(4)} SOL`, 'var(--text)'],
+                    ['Virtual Balance', `${portfolio.paperBalance.toFixed(4)} ${agents.find(a => a.id === selectedAgent)?.chain === 'base' ? 'ETH' : 'SOL'}`, 'var(--text)'],
                     ['Total P&L', `${Number(portfolio.stats.totalPnl) >= 0 ? '+' : ''}${portfolio.stats.totalPnl} USD`, Number(portfolio.stats.totalPnl) >= 0 ? 'var(--green)' : 'var(--red)'],
                     ['Win Rate', `${portfolio.stats.winRate}%`, 'var(--accent)'],
                     ['Total Trades', String(portfolio.stats.totalTrades), 'var(--text)'],

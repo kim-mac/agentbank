@@ -33,9 +33,9 @@ COPY --from=builder /app/dist ./dist
 # Copy .env file (needed since Railway Variables aren't being injected properly)
 COPY agentbank-clean/backend/.env ./
 
-# Health check (use PORT env var instead of hardcoded 3001)
+# Health check (use fixed port 8080 since that's what Railway assigns)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:' + (process.env.PORT || 3001) + '/health', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
+  CMD node -e "require('http').get('http://localhost:8080/health', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
 
 # Expose port
 EXPOSE 3001

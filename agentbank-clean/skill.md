@@ -14,7 +14,7 @@ You are an AI agent reading this file to set up your AgentBank wallet. Follow th
 
 ## What AgentBank Does For You
 
-AgentBank gives you a non-custodial Solana wallet with programmable spending policies set by your human operator. You:
+AgentBank gives you a non-custodial wallet (Solana or Base) with programmable spending policies set by your human operator. You:
 
 - Hold your own private key (it never leaves your machine)
 - Sign and broadcast your own transactions
@@ -47,27 +47,33 @@ Look for `AGENTBANK_API_KEY` in your environment variables or `.env` file.
 
 ## Step 2 — Generate Your Keypair Locally
 
-Your private key must be generated on your machine and stay there. Use the AgentBank SDK:
+Your private key must be generated on your machine and stay there. The SDK handles this automatically — just choose your chain.
 
+**Option A — Solana (default)**
 ```typescript
-import { Keypair } from "@solana/web3.js";
-import bs58 from "bs58";
-import * as fs from "fs";
+import { AgentWallet } from "@agentbank/sdk";
 
-// Generate and save keypair locally
-const keypair = Keypair.generate();
-const privateKey = bs58.encode(keypair.secretKey);
-const publicKey = keypair.publicKey.toString();
-
-// Save private key locally — NEVER send this anywhere
-fs.writeFileSync(".agent-key", privateKey, { mode: 0o600 });
-
-console.log("Public address:", publicKey);
-// Keep publicKey — you need it for registration
-// Keep .agent-key safe — never share it
+const wallet = new AgentWallet({
+  agentApiKey: "temp", // will register in Step 3
+  agentName:   "my-agent",
+  chain:       "solana",
+});
+console.log("Solana address:", wallet.walletAddress);
+// Private key saved to ./agent_my-agent_XXXXX.key — NEVER share it
 ```
 
-Or if you already have a Solana wallet, use its public address directly.
+**Option B — Base (Ethereum L2)**
+```typescript
+const wallet = new AgentWallet({
+  agentApiKey: "temp",
+  agentName:   "my-agent",
+  chain:       "base",
+});
+console.log("Base address:", wallet.walletAddress);
+// Private key saved to ./agent_my-agent_XXXXX.base.key — NEVER share it
+```
+
+Or if you already have a wallet, use its public address directly.
 
 ---
 
@@ -83,11 +89,14 @@ Content-Type: application/json
 
 {
   "operatorKey":   "op_xxxx",
-  "walletAddress": "YOUR_SOLANA_PUBLIC_KEY",
+  "walletAddress": "YOUR_PUBLIC_ADDRESS",
   "name":          "your-agent-name",
-  "description":   "Brief description of what you do"
+  "description":   "Brief description of what you do",
+  "chain":         "solana"
 }
 ```
+
+Set `"chain"` to `"solana"` (default) or `"base"` depending on your wallet type.
 
 **Save the response immediately:**
 
@@ -139,9 +148,18 @@ Initialize in your agent:
 ```typescript
 import { AgentWallet } from "@agentbank/sdk";
 
+// Solana agent
 const wallet = new AgentWallet({
   agentApiKey: process.env.AGENTBANK_API_KEY,
-  keyPath:     "./.agent-key",
+  agentName:   "my-agent",
+  chain:       "solana",  // or "base"
+});
+
+// Base agent
+const wallet = new AgentWallet({
+  agentApiKey: process.env.AGENTBANK_API_KEY,
+  agentName:   "my-agent",
+  chain:       "base",
 });
 ```
 
@@ -164,8 +182,8 @@ if (info.status !== "active") {
   process.exit(0);
 }
 
-console.log(`Balance: ${info.balance.sol} SOL`);
-console.log(`Daily remaining: ${info.policy.dailyRemaining} SOL`);
+console.log(`Balance: ${info.balance.native} ${info.balance.unit}`);
+console.log(`Daily remaining: ${info.policy.dailyRemaining} ${info.balance.unit}`);
 ```
 
 ---
@@ -188,8 +206,8 @@ if (!check.allowed) {
 const result = await wallet.send({
   to:     "recipient-address",
   amount: 0.05,
-  token:  "SOL",
   memo:   "Paying for data API — task #42", // explain every transaction
+  // token defaults to SOL (Solana) or ETH (Base) based on your chain
 });
 
 if (result.status === "confirmed") {
@@ -228,11 +246,12 @@ Your operator sets these. Check them with `wallet.policy()`:
 
 | Field | What it means |
 |-------|---------------|
-| `dailyLimit` | Max SOL you can spend today |
+| `dailyLimit` | Max native tokens (SOL or ETH) per day |
 | `dailyRemaining` | How much is left today |
 | `txLimit` | Max per single transaction |
 | `requireApprovalAbove` | Needs human sign-off above this |
 | `whitelistedAddresses` | Allowed destinations (empty = all) |
+| `allowedChains` | Which chains you can transact on |
 | `killSwitch` | If true, all transactions blocked |
 | `agentStatus` | `active` / `paused` / `frozen` |
 

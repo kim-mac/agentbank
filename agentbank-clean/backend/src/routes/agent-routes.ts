@@ -9,9 +9,14 @@ export async function agentRoutes(app: FastifyInstance) {
 
   app.get("/agent/wallet", { preHandler: requireAgent }, async (req, reply) => {
     const agent = req.agent!;
-    const balance = agent.chain === "solana"
-      ? await solana.getBalance(agent.walletAddress)
-      : { sol: (await base.getBalance(agent.walletAddress)).eth, lamports: 0 };
+    let balance: { native: number; unit: string };
+    if (agent.chain === "base") {
+      const bal = await base.getBalance(agent.walletAddress);
+      balance = { native: bal.eth, unit: "ETH" };
+    } else {
+      const bal = await solana.getBalance(agent.walletAddress);
+      balance = { native: bal.sol, unit: "SOL" };
+    }
     return reply.send({
       agentId: agent.id, agentName: agent.name,
       walletAddress: agent.walletAddress, chain: agent.chain,
@@ -78,7 +83,7 @@ export async function agentRoutes(app: FastifyInstance) {
 
     const explorerUrl = tx.chain === "solana"
       ? `https://explorer.solana.com/tx/${txHash}?cluster=devnet`
-      : `https://sepolia.basescan.org/tx/${txHash}`;
+      : base.explorerUrl(txHash);
     return reply.send({ status: "confirmed", transactionId, txHash, explorerUrl, verified: true });
   });
 
@@ -94,7 +99,7 @@ export async function agentRoutes(app: FastifyInstance) {
       ...(tx.status === "approved" && { action: "Sign and broadcast, then POST /agent/wallet/confirm" }),
       ...(tx.txHash && { explorerUrl: tx.chain === "solana"
         ? `https://explorer.solana.com/tx/${tx.txHash}?cluster=devnet`
-        : `https://sepolia.basescan.org/tx/${tx.txHash}` }),
+        : base.explorerUrl(tx.txHash) }),
     });
   });
 

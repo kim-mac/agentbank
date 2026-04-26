@@ -138,6 +138,9 @@ export function PolicyBuilder({ agentId, agentName, apiKey, policy, onSave, onCl
   )
   const [editingCat,     setEditingCat]     = useState<string | null>(null)
 
+  // Allowed chains
+  const [allowedChains, setAllowedChains] = useState<string[]>(policy.allowedChains || ['solana'])
+
   // Messaging rule
   const [allowMessages,     setAllowMessages]     = useState(policy.messagingRule?.allowMessages     ?? true)
   const [canActOnMessages,  setCanActOnMessages]  = useState(policy.messagingRule?.canActOnMessages  ?? false)
@@ -151,6 +154,7 @@ export function PolicyBuilder({ agentId, agentName, apiKey, policy, onSave, onCl
         txLimit:              +txLimit,
         requireApprovalAbove: +approvalAbv,
         whitelistedAddresses: whitelist.split('\n').map(s => s.trim()).filter(Boolean),
+        allowedChains,
         timeRule: {
           enabled: timeEnabled, startHour: +startHour,
           endHour: +endHour, blockWeekends,
@@ -220,6 +224,28 @@ export function PolicyBuilder({ agentId, agentName, apiKey, policy, onSave, onCl
                 placeholder="address1&#10;address2"
                 style={{ ...inputStyle, width: '100%', textAlign: 'left', height: 72, resize: 'vertical', fontFamily: 'var(--mono)', fontSize: 11 }}
               />
+            </div>
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 12, color: 'var(--text)', marginBottom: 5 }}>Allowed chains</div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>Which blockchains this agent can transact on.</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {(['solana', 'base'] as const).map(chain => (
+                  <button
+                    key={chain}
+                    onClick={() => setAllowedChains(prev =>
+                      prev.includes(chain) ? (prev.length > 1 ? prev.filter(c => c !== chain) : prev) : [...prev, chain]
+                    )}
+                    style={{
+                      padding: '6px 14px', borderRadius: 99, fontSize: 12, cursor: 'pointer',
+                      border: 'none', fontFamily: 'var(--sans)',
+                      background: allowedChains.includes(chain) ? 'var(--accent2)' : 'var(--surface2)',
+                      color: allowedChains.includes(chain) ? 'var(--accent)' : 'var(--muted)',
+                    }}
+                  >
+                    {chain === 'solana' ? 'Solana' : 'Base'}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 

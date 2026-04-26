@@ -3,6 +3,7 @@
 import { FastifyInstance } from "fastify";
 import * as db from "../db";
 import * as solana from "../services/solana";
+import * as base from "../services/base";
 import { buildGenericSkill, buildPersonalizedSkill } from "../services/skill-builder";
 
 const DASHBOARD_URL = process.env.DASHBOARD_URL || "http://localhost:3000";
@@ -54,6 +55,9 @@ export async function registerRoutes(app: FastifyInstance) {
     const txChain = chain || "solana";
     if (txChain === "solana" && !solana.isValidSolanaAddress(walletAddress)) {
       return reply.status(400).send({ error: "Invalid Solana wallet address" });
+    }
+    if (txChain === "base" && !base.isValidBaseAddress(walletAddress)) {
+      return reply.status(400).send({ error: "Invalid Base wallet address" });
     }
 
     let operator: db.Operator;

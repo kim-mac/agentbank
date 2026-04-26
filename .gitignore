@@ -91,6 +91,7 @@ DEPLOYMENT_GUIDE.md
 .env.*.local
 .vercel/
 .railway/
+demoagent/
 
 # Compiled Files
 *.js

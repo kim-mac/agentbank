@@ -61,7 +61,7 @@ export default function TransactionsPage() {
         {/* Summary */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 18 }}>
           {[
-            ['Volume',    `${totalVol.toFixed(4)}`, 'SOL confirmed', 'var(--accent)'],
+            ['Volume',    `${totalVol.toFixed(4)}`, 'confirmed', 'var(--accent)'],
             ['Confirmed', String(confirmed.length),  'transactions',  'var(--green)'],
             ['Rejected',  String(txs.filter(t => t.status === 'rejected').length), 'transactions', 'var(--red)'],
             ['Pending',   String(txs.filter(t => t.status === 'pending_approval').length), 'approvals', 'var(--amber)'],
@@ -99,30 +99,36 @@ export default function TransactionsPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)', background: 'rgba(255,255,255,0.02)' }}>
-                  {['Agent','Amount','To','Status','Memo','Time','Tx'].map(h => (
+                  {['Agent','Chain','Amount','To','Status','Memo','Time','Tx'].map(h => (
                     <th key={h} style={{ padding: '9px 14px', textAlign: 'left', fontSize: 10, fontWeight: 500, color: 'var(--muted2)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(tx => (
-                  <tr key={tx.id} className="table-row">
-                    <td style={{ padding: '10px 14px', fontSize: 13, fontWeight: 500 }}>{agentMap[tx.agentId] || '—'}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, fontFamily: 'var(--mono)' }}>{tx.amount} {tx.token}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--mono)' }}>{tx.toAddress?.slice(0,14)}...</td>
-                    <td style={{ padding: '10px 14px' }}><StatusBadge status={tx.status} /></td>
-                    <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={tx.memo}>{tx.memo || '—'}</td>
-                    <td style={{ padding: '10px 14px', fontSize: 11, color: 'var(--muted2)', whiteSpace: 'nowrap' }}>{timeAgo(tx.createdAt)}</td>
-                    <td style={{ padding: '10px 14px' }}>
-                      {tx.txHash
-                        ? <a href={`https://explorer.solana.com/tx/${tx.txHash}?cluster=devnet`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, textDecoration: 'none' }}>
-                            <ExternalLink size={11} /> View
-                          </a>
-                        : <span style={{ color: 'var(--muted2)', fontSize: 11 }}>—</span>
-                      }
-                    </td>
-                  </tr>
-                ))}
+                {filtered.map(tx => {
+                  const explorerUrl = tx.chain === 'base'
+                    ? `https://sepolia.basescan.org/tx/${tx.txHash}`
+                    : `https://explorer.solana.com/tx/${tx.txHash}?cluster=devnet`
+                  return (
+                    <tr key={tx.id} className="table-row">
+                      <td style={{ padding: '10px 14px', fontSize: 13, fontWeight: 500 }}>{agentMap[tx.agentId] || '—'}</td>
+                      <td style={{ padding: '10px 14px' }}><span className="badge badge-muted" style={{ fontSize: 10 }}>{tx.chain}</span></td>
+                      <td style={{ padding: '10px 14px', fontSize: 12, fontFamily: 'var(--mono)' }}>{tx.amount} {tx.token}</td>
+                      <td style={{ padding: '10px 14px', fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--mono)' }}>{tx.toAddress?.slice(0,14)}...</td>
+                      <td style={{ padding: '10px 14px' }}><StatusBadge status={tx.status} /></td>
+                      <td style={{ padding: '10px 14px', fontSize: 12, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={tx.memo}>{tx.memo || '—'}</td>
+                      <td style={{ padding: '10px 14px', fontSize: 11, color: 'var(--muted2)', whiteSpace: 'nowrap' }}>{timeAgo(tx.createdAt)}</td>
+                      <td style={{ padding: '10px 14px' }}>
+                        {tx.txHash
+                          ? <a href={explorerUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, textDecoration: 'none' }}>
+                              <ExternalLink size={11} /> View
+                            </a>
+                          : <span style={{ color: 'var(--muted2)', fontSize: 11 }}>—</span>
+                        }
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           )}
