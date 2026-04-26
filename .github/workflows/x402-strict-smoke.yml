@@ -1,0 +1,86 @@
+name: x402 Strict Smoke
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  strict-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      USE_SUPABASE: "false"
+      NODE_ENV: "test"
+      PORT: "3011"
+      API_URL: "http://127.0.0.1:3011/v1"
+      SITE_URL: "http://127.0.0.1:3011"
+      DASHBOARD_URL: "http://127.0.0.1:3000"
+      X402_PAY_TO: "0x9095502F82D2FE8087750A70691e5BF07b1D60dE"
+      AGENTBANK_API_URL: "http://127.0.0.1:3011/v1"
+      AGENTBANK_PREMIUM_URL: "http://127.0.0.1:3011/v1/premium/insights"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install backend deps
+        working-directory: agentbank-clean/backend
+        run: npm ci
+
+      - name: Build backend
+        working-directory: agentbank-clean/backend
+        run: npm run build
+
+      - name: Start backend
+        working-directory: agentbank-clean/backend
+        run: |
+          nohup npm run start > backend.log 2>&1 &
+          echo $! > backend.pid
+
+      - name: Wait for backend health
+        run: |
+          for i in {1..30}; do
+            if curl -fsS "http://127.0.0.1:3011/health" > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Backend health check failed"
+          exit 1
+
+      - name: Install SDK deps
+        working-directory: agentbank-clean/sdk
+        run: npm ci
+
+      - name: Run strict x402 onboarding smoke
+        working-directory: agentbank-clean/sdk
+        run: npm run smoke:onboarding:strict
+
+      - name: Run x402 negative-path smoke
+        working-directory: agentbank-clean/sdk
+        run: npm run smoke:x402:negative
+
+      - name: Print backend log on failure
+        if: failure()
+        working-directory: agentbank-clean/backend
+        run: |
+          if [ -f backend.log ]; then
+            cat backend.log
+          fi
+
+      - name: Stop backend
+        if: always()
+        working-directory: agentbank-clean/backend
+        run: |
+          if [ -f backend.pid ]; then
+            kill "$(cat backend.pid)" || true
+          fi

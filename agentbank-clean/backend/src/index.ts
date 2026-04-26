@@ -14,6 +14,8 @@ import { registerRoutes } from "./routes/register-routes";
 import { messageRoutes }  from "./routes/message-routes";
 import { paperRoutes }    from "./routes/paper-routes";
 import { leaderboardRoutes } from "./routes/leaderboard-routes";
+import { premiumRoutes } from "./routes/premium-routes";
+import { getSystemPublicKey } from "./services/squads";
 
 const app = Fastify({ logger: true });
 
@@ -31,9 +33,16 @@ async function start() {
   await app.register(messageRoutes,  { prefix: "/v1" });
   await app.register(paperRoutes,    { prefix: "/v1" });
   await app.register(leaderboardRoutes, { prefix: "/v1" });
+  await app.register(premiumRoutes, { prefix: "/v1" });
 
   const PORT = Number(process.env.PORT) || 3001;
   await app.listen({ port: PORT, host: "0.0.0.0" });
+
+  if (process.env.SQUADS_SYSTEM_KEY) {
+    console.log(`[Squads] System config authority: ${getSystemPublicKey()}`);
+  } else {
+    console.log("[Squads] SQUADS_SYSTEM_KEY not set (Squads features disabled)");
+  }
 
   console.log(`
 ╔══════════════════════════════════════════════╗

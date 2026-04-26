@@ -2,13 +2,14 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useApp } from '@/lib/store'
-import { LayoutDashboard, Bot, CheckCircle, ArrowLeftRight, Sun, Moon, LogOut, MessageSquare, FlaskConical } from 'lucide-react'
+import { LayoutDashboard, Bot, CheckCircle, ArrowLeftRight, Sun, Moon, LogOut, MessageSquare, FlaskConical, CircleDollarSign } from 'lucide-react'
 
 const nav = [
   { href: '/dashboard',              label: 'Overview',     icon: LayoutDashboard },
   { href: '/dashboard/agents',       label: 'Agents',       icon: Bot },
   { href: '/dashboard/approvals',    label: 'Approvals',    icon: CheckCircle },
   { href: '/dashboard/transactions', label: 'Transactions', icon: ArrowLeftRight },
+  { href: '/dashboard/payments',     label: 'x402 Payments', icon: CircleDollarSign },
   { href: '/dashboard/messages',     label: 'Messages',     icon: MessageSquare },
   { href: '/dashboard/paper',         label: 'Paper Trading',icon: FlaskConical },
 ]

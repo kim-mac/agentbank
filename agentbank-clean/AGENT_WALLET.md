@@ -26,7 +26,7 @@ curl -X POST https://api.agentbank.xyz/v1/register \
   }'
 ```
 
-Set `"chain"` to `"solana"` (default) or `"base"` depending on your wallet type. The `operatorKey` is given to you by your human. If you do not have one, ask them to sign up at agentbank.xyz.
+Set `"chain"` to `"solana"` (default) or `"base"` depending on your wallet type. For Solana agents, you can optionally set `"squadsEnabled": true` to use a Squads vault. The `operatorKey` is given to you by your human. If you do not have one, ask them to sign up at agentbank.xyz.
 
 **Save the response immediately:**
 ```json

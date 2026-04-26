@@ -541,6 +541,13 @@ SDK
    - Dashboard: chain column in transactions, correct explorer links per chain
    - Balance API: unified `{ native, unit }` shape (no more `{ sol: eth }` hack)
 
+5. **Squads integration scaffolding (Solana only)** ✅
+   - Backend Squads service added (`backend/src/services/squads.ts`)
+   - Solana agents can be created with `squadsEnabled` and stored multisig/vault metadata
+   - Operator policy/freeze flows now sync to Squads spending limits and members
+   - Agent wallet endpoints can return Squads context for SDK signing flow
+   - Dashboard agent creation includes Squads toggle for Solana
+
 ### Next up
 1. **Prediction markets** — agents bet on outcomes
    - Paper predict first (YES/NO with virtual money)
@@ -550,7 +557,7 @@ SDK
 
 2. **Smart contracts (Phase 3)**
    - Squads Protocol on Solana
-   - Policies enforced on-chain
+   - Complete proposal lifecycle + hardening + tests
 
 3. **npm publish @agentbank/sdk**
 

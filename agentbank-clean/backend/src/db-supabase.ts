@@ -80,6 +80,12 @@ export interface Agent {
   inGroup:       boolean;
   paperMode?:    boolean;
   paperBalance?: number;
+  squadsEnabled?:          boolean;
+  squadsMultisigPda?:      string;
+  squadsVaultPda?:         string;
+  squadsVaultIndex?:       number;
+  squadsSpendingLimitPda?: string;
+  squadsCreateKey?:        string;
   policy:        Policy;
   createdAt:     string;
 }
@@ -108,6 +114,31 @@ export interface ApprovalRequest {
   status:        "pending" | "approved" | "rejected";
   createdAt:     string;
   respondedAt?:  string;
+}
+
+export interface X402Payment {
+  id: string;
+  operatorId?: string;
+  endpoint: string;
+  network: string;
+  amountAtomic: string;
+  asset: string;
+  payTo: string;
+  payerAddress: string;
+  nonce: string;
+  authorizationValidAfter: string;
+  authorizationValidBefore: string;
+  paymentSignature: string;
+  facilitatorVerified: boolean;
+  facilitatorTxHash?: string;
+  createdAt: string;
+}
+
+const x402PaymentsFallback = new Map<string, X402Payment>();
+
+function isMissingX402PaymentsTable(err: any): boolean {
+  const msg = String(err?.message || err || "");
+  return msg.includes("public.x402_payments");
 }
 
 // ── Row mappers (snake_case DB → camelCase app) ────────────────────────────
@@ -140,6 +171,12 @@ function mapAgent(row: any): Agent {
     inGroup:       row.in_group      || false,
     paperMode:     row.paper_mode    || false,
     paperBalance:  row.paper_balance !== undefined ? Number(row.paper_balance) : 100,
+    squadsEnabled:          row.squads_enabled || false,
+    squadsMultisigPda:      row.squads_multisig_pda || undefined,
+    squadsVaultPda:         row.squads_vault_pda || undefined,
+    squadsVaultIndex:       row.squads_vault_index ?? 0,
+    squadsSpendingLimitPda: row.squads_spending_limit_pda || undefined,
+    squadsCreateKey:        row.squads_create_key || undefined,
     createdAt:     row.created_at,
     policy: {
       dailyLimit:           Number(row.policy_daily_limit),
@@ -192,6 +229,26 @@ function mapApproval(row: any): ApprovalRequest {
   };
 }
 
+function mapX402Payment(row: any): X402Payment {
+  return {
+    id: row.id,
+    operatorId: row.operator_id || undefined,
+    endpoint: row.endpoint,
+    network: row.network,
+    amountAtomic: String(row.amount_atomic),
+    asset: row.asset,
+    payTo: row.pay_to,
+    payerAddress: row.payer_address,
+    nonce: row.nonce,
+    authorizationValidAfter: String(row.authorization_valid_after),
+    authorizationValidBefore: String(row.authorization_valid_before),
+    paymentSignature: row.payment_signature,
+    facilitatorVerified: Boolean(row.facilitator_verified),
+    facilitatorTxHash: row.facilitator_tx_hash || undefined,
+    createdAt: row.created_at,
+  };
+}
+
 // ── Operators ──────────────────────────────────────────────────────────────
 
 export async function createOperator(email: string, orgName: string): Promise<Operator> {
@@ -238,6 +295,12 @@ export async function createAgent(params: {
   roleName?:     string;
   roleDocument?: string;
   inGroup?:      boolean;
+  squadsEnabled?: boolean;
+  squadsMultisigPda?: string;
+  squadsVaultPda?: string;
+  squadsVaultIndex?: number;
+  squadsSpendingLimitPda?: string;
+  squadsCreateKey?: string;
   policy:        Policy;
 }): Promise<Agent> {
   const apiKey      = `agent_${crypto.randomUUID().replace(/-/g, "")}`;
@@ -262,6 +325,12 @@ export async function createAgent(params: {
       role_name:                      params.roleName     || null,
       role_document:                  params.roleDocument || null,
       in_group:                       params.inGroup      || false,
+      squads_enabled:                 params.squadsEnabled || false,
+      squads_multisig_pda:            params.squadsMultisigPda || null,
+      squads_vault_pda:               params.squadsVaultPda || null,
+      squads_vault_index:             params.squadsVaultIndex ?? 0,
+      squads_spending_limit_pda:      params.squadsSpendingLimitPda || null,
+      squads_create_key:              params.squadsCreateKey || null,
       policy_time_rule:               params.policy.timeRule        || null,
       policy_balance_rule:            params.policy.balanceRule     || null,
       policy_spend_threshold:         params.policy.spendThresholdRule || null,
@@ -310,6 +379,22 @@ export async function updateAgentPolicy(id: string, policy: Partial<Policy>): Pr
     }
   }
   await supabase.from("agents").update(updates).eq("id", id);
+}
+
+export async function updateAgentSquads(
+  id: string,
+  updates: Partial<Pick<Agent, "squadsEnabled"|"squadsMultisigPda"|"squadsVaultPda"|"squadsVaultIndex"|"squadsSpendingLimitPda"|"squadsCreateKey">>
+): Promise<void> {
+  const dbUpdates: Record<string, any> = {};
+  if (updates.squadsEnabled          !== undefined) dbUpdates.squads_enabled = updates.squadsEnabled;
+  if (updates.squadsMultisigPda      !== undefined) dbUpdates.squads_multisig_pda = updates.squadsMultisigPda;
+  if (updates.squadsVaultPda         !== undefined) dbUpdates.squads_vault_pda = updates.squadsVaultPda;
+  if (updates.squadsVaultIndex       !== undefined) dbUpdates.squads_vault_index = updates.squadsVaultIndex;
+  if (updates.squadsSpendingLimitPda !== undefined) dbUpdates.squads_spending_limit_pda = updates.squadsSpendingLimitPda;
+  if (updates.squadsCreateKey        !== undefined) dbUpdates.squads_create_key = updates.squadsCreateKey;
+  if (Object.keys(dbUpdates).length > 0) {
+    await supabase.from("agents").update(dbUpdates).eq("id", id);
+  }
 }
 
 // ── Transactions ───────────────────────────────────────────────────────────
@@ -612,4 +697,146 @@ export async function claimAgent(id: string): Promise<void> {
     claim_status: "claimed",
     claimed_at: new Date().toISOString(),
   }).eq("id", id);
+}
+
+// ── x402 payments ───────────────────────────────────────────────────────────
+export async function createX402Payment(
+  data: Omit<X402Payment, "id" | "createdAt">
+): Promise<X402Payment> {
+  const { data: row, error } = await supabase
+    .from("x402_payments")
+    .insert({
+      operator_id: data.operatorId || null,
+      endpoint: data.endpoint,
+      network: data.network,
+      amount_atomic: data.amountAtomic,
+      asset: data.asset,
+      pay_to: data.payTo,
+      payer_address: data.payerAddress,
+      nonce: data.nonce,
+      authorization_valid_after: data.authorizationValidAfter,
+      authorization_valid_before: data.authorizationValidBefore,
+      payment_signature: data.paymentSignature,
+      facilitator_verified: data.facilitatorVerified,
+      facilitator_tx_hash: data.facilitatorTxHash || null,
+    })
+    .select()
+    .single();
+  if (error) {
+    if (isMissingX402PaymentsTable(error)) {
+      const fallback: X402Payment = {
+        ...data,
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString(),
+      };
+      x402PaymentsFallback.set(fallback.id, fallback);
+      return fallback;
+    }
+    throw new Error(`createX402Payment: ${error.message}`);
+  }
+  return mapX402Payment(row);
+}
+
+export async function getX402PaymentByNonce(nonce: string): Promise<X402Payment | undefined> {
+  const { data, error } = await supabase.from("x402_payments").select().eq("nonce", nonce).single();
+  if (error && isMissingX402PaymentsTable(error)) {
+    return [...x402PaymentsFallback.values()].find((p) => p.nonce === nonce);
+  }
+  return data ? mapX402Payment(data) : undefined;
+}
+
+export async function getX402RevenueStats(operatorId?: string): Promise<{
+  totalPayments: number;
+  totalAmountAtomic: string;
+  byNetwork: Record<string, { count: number; amountAtomic: string }>;
+  recentPayments: X402Payment[];
+}> {
+  let query = supabase.from("x402_payments").select("*").order("created_at", { ascending: false });
+  if (operatorId) query = query.eq("operator_id", operatorId);
+  const { data, error } = await query.limit(200);
+  let rows = (data || []).map(mapX402Payment);
+  if (error && isMissingX402PaymentsTable(error)) {
+    rows = [...x402PaymentsFallback.values()]
+      .filter((p) => !operatorId || p.operatorId === operatorId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  } else if (error) {
+    throw new Error(`getX402RevenueStats: ${error.message}`);
+  }
+  let total = BigInt(0);
+  const byNetwork: Record<string, { count: number; amountAtomic: string }> = {};
+  for (const row of rows) {
+    total += BigInt(row.amountAtomic);
+    const current = byNetwork[row.network] || { count: 0, amountAtomic: "0" };
+    byNetwork[row.network] = {
+      count: current.count + 1,
+      amountAtomic: (BigInt(current.amountAtomic) + BigInt(row.amountAtomic)).toString(),
+    };
+  }
+
+  return {
+    totalPayments: rows.length,
+    totalAmountAtomic: total.toString(),
+    byNetwork,
+    recentPayments: rows.slice(0, 20),
+  };
+}
+
+function filterX402FallbackList(params: {
+  operatorId: string;
+  network?: string;
+  fromDate?: string;
+  toDate?: string;
+  verified?: boolean;
+}): X402Payment[] {
+  let rows = [...x402PaymentsFallback.values()].filter((p) => p.operatorId === params.operatorId);
+  if (params.network) rows = rows.filter((p) => p.network === params.network);
+  if (params.verified === true) rows = rows.filter((p) => p.facilitatorVerified);
+  if (params.verified === false) rows = rows.filter((p) => !p.facilitatorVerified);
+  if (params.fromDate) {
+    const start = `${params.fromDate}T00:00:00.000Z`;
+    rows = rows.filter((p) => p.createdAt >= start);
+  }
+  if (params.toDate) {
+    const end = `${params.toDate}T23:59:59.999Z`;
+    rows = rows.filter((p) => p.createdAt <= end);
+  }
+  return rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export async function listX402Payments(params: {
+  operatorId: string;
+  network?: string;
+  fromDate?: string;
+  toDate?: string;
+  verified?: boolean;
+  page: number;
+  pageSize: number;
+}): Promise<{ items: X402Payment[]; total: number }> {
+  const page = Math.max(1, params.page);
+  const pageSize = Math.min(100, Math.max(1, params.pageSize));
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  let q = supabase
+    .from("x402_payments")
+    .select("*", { count: "exact" })
+    .eq("operator_id", params.operatorId);
+  if (params.network) q = q.eq("network", params.network);
+  if (params.fromDate) q = q.gte("created_at", `${params.fromDate}T00:00:00.000Z`);
+  if (params.toDate) q = q.lte("created_at", `${params.toDate}T23:59:59.999Z`);
+  if (params.verified === true) q = q.eq("facilitator_verified", true);
+  if (params.verified === false) q = q.eq("facilitator_verified", false);
+
+  const { data, error, count } = await q
+    .order("created_at", { ascending: false })
+    .range(from, to);
+
+  if (error && isMissingX402PaymentsTable(error)) {
+    const all = filterX402FallbackList(params);
+    const total = all.length;
+    const items = all.slice(from, from + pageSize);
+    return { items, total };
+  }
+  if (error) throw new Error(`listX402Payments: ${error.message}`);
+  return { items: (data || []).map(mapX402Payment), total: count ?? 0 };
 }

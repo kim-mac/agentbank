@@ -10,7 +10,7 @@ if (USE_SUPABASE) {
   console.log("[DB] Using in-memory store — data resets on restart ⚠️");
 }
 
-export type { Operator, Agent, Policy, Transaction, ApprovalRequest, Message, PaperTrade } from "./db-memory";
+export type { Operator, Agent, Policy, Transaction, ApprovalRequest, Message, PaperTrade, X402Payment } from "./db-memory";
 
 const db = USE_SUPABASE ? supabaseDb : inMemory;
 
@@ -24,6 +24,7 @@ export const getAgentById            = db.getAgentById;
 export const getAgentByClaimToken    = db.getAgentByClaimToken;
 export const updateAgentStatus       = db.updateAgentStatus;
 export const updateAgentPolicy       = db.updateAgentPolicy;
+export const updateAgentSquads       = (db as any).updateAgentSquads;
 export const updateAgentRole         = db.updateAgentRole;
 export const createPaperTrade        = db.createPaperTrade;
 export const getPaperTrade           = db.getPaperTrade;
@@ -52,3 +53,7 @@ export const createApprovalRequest   = db.createApprovalRequest;
 export const getApprovalRequest      = db.getApprovalRequest;
 export const updateApprovalRequest   = db.updateApprovalRequest;
 export const getPendingApprovals     = db.getPendingApprovals;
+export const createX402Payment       = (db as any).createX402Payment;
+export const getX402PaymentByNonce   = (db as any).getX402PaymentByNonce;
+export const getX402RevenueStats     = (db as any).getX402RevenueStats;
+export const listX402Payments        = (db as any).listX402Payments;

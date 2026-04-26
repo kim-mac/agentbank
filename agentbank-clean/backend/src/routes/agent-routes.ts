@@ -3,6 +3,7 @@ import { requireAgent } from "../middleware/auth";
 import * as db from "../db";
 import * as solana from "../services/solana";
 import * as base from "../services/base";
+import * as squads from "../services/squads";
 import { evaluatePolicy, getPolicySummary } from "../services/policy-engine";
 
 export async function agentRoutes(app: FastifyInstance) {
@@ -13,6 +14,9 @@ export async function agentRoutes(app: FastifyInstance) {
     if (agent.chain === "base") {
       const bal = await base.getBalance(agent.walletAddress);
       balance = { native: bal.eth, unit: "ETH" };
+    } else if ((agent as any).squadsEnabled && (agent as any).squadsVaultPda) {
+      const bal = await squads.getVaultBalance((agent as any).squadsVaultPda);
+      balance = { native: bal.sol, unit: "SOL" };
     } else {
       const bal = await solana.getBalance(agent.walletAddress);
       balance = { native: bal.sol, unit: "SOL" };
@@ -20,6 +24,12 @@ export async function agentRoutes(app: FastifyInstance) {
     return reply.send({
       agentId: agent.id, agentName: agent.name,
       walletAddress: agent.walletAddress, chain: agent.chain,
+      squadsEnabled: (agent as any).squadsEnabled || false,
+      squadsMultisigPda: (agent as any).squadsMultisigPda,
+      squadsVaultPda: (agent as any).squadsVaultPda,
+      squadsVaultIndex: (agent as any).squadsVaultIndex ?? 0,
+      squadsSpendingLimitPda: (agent as any).squadsSpendingLimitPda,
+      depositAddress: (agent as any).squadsEnabled ? (agent as any).squadsVaultPda : agent.walletAddress,
       balance, policy: await getPolicySummary(agent.id), status: agent.status,
       claimStatus: (agent as any).claimStatus || "claimed",
     });
@@ -63,8 +73,25 @@ export async function agentRoutes(app: FastifyInstance) {
       return reply.send({ status: "pending_approval", transactionId: decision.transactionId, approvalRequestId: decision.approvalRequestId, message: "Poll GET /agent/wallet/tx/:id — when approved, sign + broadcast + POST /agent/wallet/confirm", action: "Wait for approval" });
     }
 
-    const tx = await db.createTransaction({ agentId: agent.id, chain: txChain, fromAddress: agent.walletAddress, toAddress, amount, token, status: "approved", memo });
-    return reply.send({ status: "approved", transactionId: tx.id, message: "Policy approved. Sign + broadcast + POST /agent/wallet/confirm", action: "Sign and broadcast now", details: { from: agent.walletAddress, to: toAddress, amount, token, chain: txChain } });
+    const fromAddress = (agent as any).squadsEnabled && (agent as any).squadsVaultPda
+      ? (agent as any).squadsVaultPda
+      : agent.walletAddress;
+    const tx = await db.createTransaction({ agentId: agent.id, chain: txChain, fromAddress, toAddress, amount, token, status: "approved", memo });
+    return reply.send({
+      status: "approved",
+      transactionId: tx.id,
+      message: "Policy approved. Sign + broadcast + POST /agent/wallet/confirm",
+      action: "Sign and broadcast now",
+      details: { from: fromAddress, to: toAddress, amount, token, chain: txChain },
+      ...(((agent as any).squadsEnabled && txChain === "solana") ? {
+        squads: {
+          multisigPda: (agent as any).squadsMultisigPda,
+          vaultPda: (agent as any).squadsVaultPda,
+          spendingLimitPda: (agent as any).squadsSpendingLimitPda,
+          vaultIndex: (agent as any).squadsVaultIndex ?? 0,
+        },
+      } : {}),
+    });
   });
 
   app.post("/agent/wallet/confirm", { preHandler: requireAgent }, async (req, reply) => {

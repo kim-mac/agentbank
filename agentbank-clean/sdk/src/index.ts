@@ -20,7 +20,15 @@ import {
   sendAndConfirmTransaction,
   LAMPORTS_PER_SOL,
   clusterApiUrl,
+  VersionedTransaction,
 } from "@solana/web3.js";
+import * as multisig from "@sqds/multisig";
+import {
+  x402Client,
+  x402HTTPClient,
+  wrapFetchWithPaymentFromConfig,
+} from "@x402/fetch";
+import { ExactEvmScheme } from "@x402/evm";
 import {
   createPublicClient,
   createWalletClient,
@@ -60,6 +68,12 @@ export interface WalletInfo {
     agentStatus:          string;
   };
   status: string;
+  squadsEnabled?: boolean;
+  squadsMultisigPda?: string;
+  squadsVaultPda?: string;
+  squadsVaultIndex?: number;
+  squadsSpendingLimitPda?: string;
+  depositAddress?: string;
 }
 
 export interface SendResult {
@@ -86,6 +100,16 @@ export interface TransactionStatus {
   confirmedAt?:  string;
   explorerUrl?:  string;
   action?:       string;
+}
+
+export interface X402PaymentResult<T = any> {
+  status:          number;
+  ok:              boolean;
+  paid:            boolean;
+  data?:           T;
+  text?:           string;
+  paymentResponse?: unknown;
+  headers:         Record<string, string>;
 }
 
 // ── Key management — stays on this machine only ────────────────────────────
@@ -146,6 +170,14 @@ export class AgentWallet {
   private evmAccount?:      Account;
   private evmWalletClient?: WalletClient;
   private evmPublicClient?: PublicClient;
+  private x402PaymentFetch?: typeof fetch;
+  private x402PaymentClient?: x402Client;
+  private squads?: {
+    multisigPda: string;
+    vaultPda: string;
+    spendingLimitPda: string;
+    vaultIndex: number;
+  };
 
   constructor(config: {
     agentApiKey:  string;
@@ -266,9 +298,15 @@ export class AgentWallet {
 
     if (request.status === "approved") {
       try {
-        const txHash = this.chain === "base"
-          ? await this._signAndBroadcastEvm(params.to, params.amount)
-          : await this._signAndBroadcastSolana(params.to, params.amount);
+        let txHash: string;
+        if (this.chain === "base") {
+          txHash = await this._signAndBroadcastEvm(params.to, params.amount);
+        } else if (request.squads?.multisigPda && request.squads?.spendingLimitPda) {
+          this.squads = request.squads;
+          txHash = await this._signAndBroadcastSquads(params.to, params.amount, request.squads);
+        } else {
+          txHash = await this._signAndBroadcastSolana(params.to, params.amount);
+        }
         const confirm = await this.api<any>("POST", "/agent/wallet/confirm", {
           transactionId: request.transactionId, txHash,
         });
@@ -302,9 +340,14 @@ export class AgentWallet {
       if (tx.status === "approved") {
         console.log("[AgentWallet] Approved — signing and broadcasting");
         try {
-          const txHash = this.chain === "base"
-            ? await this._signAndBroadcastEvm(tx.toAddress, tx.amount)
-            : await this._signAndBroadcastSolana(tx.toAddress, tx.amount);
+          let txHash: string;
+          if (this.chain === "base") {
+            txHash = await this._signAndBroadcastEvm(tx.toAddress, tx.amount);
+          } else if (this.squads?.multisigPda && this.squads?.spendingLimitPda) {
+            txHash = await this._signAndBroadcastSquads(tx.toAddress, tx.amount, this.squads);
+          } else {
+            txHash = await this._signAndBroadcastSolana(tx.toAddress, tx.amount);
+          }
           const confirm = await this.api<any>("POST", "/agent/wallet/confirm", { transactionId, txHash });
           return { status: "confirmed", transactionId, txHash, explorerUrl: confirm.explorerUrl };
         } catch (err: any) {
@@ -325,6 +368,76 @@ export class AgentWallet {
   async history(): Promise<TransactionStatus[]> {
     const res = await this.api<{ transactions: TransactionStatus[] }>("GET", "/agent/wallet/history");
     return res.transactions;
+  }
+
+  // x402 paid service flow (buyer side)
+  // Handles 402 + payment + retry automatically via x402 fetch wrapper.
+  async payForService<T = any>(params: {
+    url:              string;
+    method?:          string;
+    headers?:         Record<string, string>;
+    body?:            unknown;
+    parseAs?:         "json" | "text";
+    expectedStatuses?: number[];
+  }): Promise<X402PaymentResult<T>> {
+    if (this.chain !== "base" || !this.evmAccount) {
+      throw new Error("x402 buyer flow currently requires a Base/EVM wallet in AgentWallet");
+    }
+
+    const fetchWithPayment = this.getOrCreateX402Fetch();
+    const method = params.method || "GET";
+    const headers = { ...(params.headers || {}) };
+    let body: string | undefined;
+    if (params.body !== undefined) {
+      if (typeof params.body === "string") {
+        body = params.body;
+      } else {
+        body = JSON.stringify(params.body);
+        if (!headers["Content-Type"]) headers["Content-Type"] = "application/json";
+      }
+    }
+
+    const response = await fetchWithPayment(params.url, { method, headers, ...(body ? { body } : {}) });
+    const outHeaders: Record<string, string> = {};
+    response.headers.forEach((value, key) => { outHeaders[key] = value; });
+
+    const shouldParseJson = params.parseAs
+      ? params.parseAs === "json"
+      : (response.headers.get("content-type") || "").toLowerCase().includes("application/json");
+
+    let data: T | undefined;
+    let text: string | undefined;
+    if (shouldParseJson) {
+      try { data = await response.json() as T; }
+      catch { text = await response.text(); }
+    } else {
+      text = await response.text();
+    }
+
+    const expected = params.expectedStatuses || [];
+    if (expected.length > 0 && !expected.includes(response.status)) {
+      throw new Error(`x402 request returned unexpected status ${response.status}`);
+    }
+
+    let paymentResponse: unknown;
+    try {
+      if (this.x402PaymentClient) {
+        const httpClient = new x402HTTPClient(this.x402PaymentClient);
+        paymentResponse = httpClient.getPaymentSettleResponse((name) => response.headers.get(name));
+      }
+    } catch {
+      paymentResponse = undefined;
+    }
+
+    return {
+      status: response.status,
+      ok: response.ok,
+      paid: Boolean(paymentResponse),
+      data,
+      text,
+      paymentResponse,
+      headers: outHeaders,
+    };
   }
 
   // ── Messaging ─────────────────────────────────────────────────────────
@@ -521,6 +634,46 @@ export class AgentWallet {
 
     console.log(`[AgentWallet] Base broadcast confirmed: ${txHash}`);
     return txHash;
+  }
+
+  private getOrCreateX402Fetch(): typeof fetch {
+    if (this.x402PaymentFetch) return this.x402PaymentFetch;
+    if (!this.evmAccount) throw new Error("EVM account not initialized");
+
+    const client = new x402Client();
+    const exact = new ExactEvmScheme(this.evmAccount);
+    client.register("eip155:*", exact);
+    this.x402PaymentClient = client;
+    this.x402PaymentFetch = wrapFetchWithPaymentFromConfig(fetch, {
+      schemes: [{ network: "eip155:*", client: exact }],
+      x402Version: 1,
+    });
+    return this.x402PaymentFetch;
+  }
+
+  private async _signAndBroadcastSquads(
+    toAddress: string,
+    amountSol: number,
+    squadsContext: { multisigPda: string; spendingLimitPda: string; vaultIndex: number }
+  ): Promise<string> {
+    const blockhash = (await this.solConnection!.getLatestBlockhash()).blockhash;
+    const tx = await multisig.transactions.spendingLimitUse({
+      amount: Math.round(amountSol * LAMPORTS_PER_SOL),
+      blockhash,
+      decimals: 9,
+      destination: new PublicKey(toAddress),
+      feePayer: this.solKeypair!.publicKey,
+      member: this.solKeypair!.publicKey,
+      multisigPda: new PublicKey(squadsContext.multisigPda),
+      spendingLimit: new PublicKey(squadsContext.spendingLimitPda),
+      vaultIndex: squadsContext.vaultIndex ?? 0,
+    });
+
+    tx.sign([this.solKeypair!]);
+    const sig = await this.solConnection!.sendTransaction(tx as VersionedTransaction);
+    await this.solConnection!.confirmTransaction(sig, "confirmed");
+    console.log(`[AgentWallet] Squads spending limit tx confirmed: ${sig}`);
+    return sig;
   }
 }
 

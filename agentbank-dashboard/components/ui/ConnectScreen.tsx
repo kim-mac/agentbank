@@ -1,8 +1,9 @@
 'use client'
+import Link from 'next/link'
 import { useState } from 'react'
 import { useApp } from '@/lib/store'
 import { getAgents, registerOperator } from '@/lib/api'
-import { ArrowRight, Loader } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Loader } from 'lucide-react'
 
 const LogoMark = () => (
   <div style={{
@@ -56,6 +57,29 @@ export function ConnectScreen() {
       justifyContent: 'center', background: 'var(--bg)', padding: 20,
       position: 'relative',
     }}>
+      {/* Back to main site */}
+      <Link
+        href="/"
+        aria-label="Back to home"
+        style={{
+          position: 'absolute',
+          top: 20,
+          left: 20,
+          width: 38,
+          height: 38,
+          borderRadius: 12,
+          background: 'var(--surface)',
+          border: '1px solid var(--border)',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          textDecoration: 'none',
+          zIndex: 2,
+        }}
+      >
+        <ArrowLeft size={16} />
+      </Link>
+
       {/* Grid background */}
       <div style={{
         position: 'fixed', inset: 0, pointerEvents: 'none',
@@ -66,15 +90,17 @@ export function ConnectScreen() {
 
       <div style={{ width: '100%', maxWidth: 400, position: 'relative', animation: 'fadeUp 0.5s ease' }}>
         {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <LogoMark />
-          <div style={{ fontFamily: 'var(--serif)', fontSize: 26, fontWeight: 400, color: 'var(--text)', marginTop: 12, letterSpacing: '-0.3px' }}>
-            AgentBank
+        <Link href="/" style={{ textDecoration: 'none' }}>
+          <div style={{ textAlign: 'center', marginBottom: 32 }}>
+            <LogoMark />
+            <div style={{ fontFamily: 'var(--serif)', fontSize: 26, fontWeight: 400, color: 'var(--text)', marginTop: 12, letterSpacing: '-0.3px' }}>
+              AgentBank
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>
+              Non-custodial wallets for AI agents
+            </div>
           </div>
-          <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>
-            Non-custodial wallets for AI agents
-          </div>
-        </div>
+        </Link>
 
         {/* Card */}
         <div className="card" style={{ padding: 28 }}>

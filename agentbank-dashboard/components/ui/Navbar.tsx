@@ -44,15 +44,18 @@ export function Navbar() {
       transition: 'all 0.3s',
     }}>
       {/* Logo */}
-      <Link href="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 9 }}>
+      <Link href="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 9, zIndex: 1 }}>
         <LogoMark />
         <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text)', letterSpacing: '-0.2px' }}>
           AgentBank
         </span>
       </Link>
 
-      {/* Nav links */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      {/* Nav links — viewport-centered so they align with hero content */}
+      <div style={{
+        position: 'absolute', left: '50%', transform: 'translateX(-50%)',
+        display: 'flex', alignItems: 'center', gap: 4,
+      }}>
         {navLinks.map(({ href, label }) => {
           const active = pathname === href
           return (
@@ -74,7 +77,7 @@ export function Navbar() {
       </div>
 
       {/* CTA */}
-      <Link href="/dashboard" style={{ textDecoration: 'none' }}>
+      <Link href="/dashboard" style={{ textDecoration: 'none', zIndex: 1 }}>
         <button style={{
           background: 'var(--surface2)', border: '1px solid var(--border2)',
           color: 'var(--text)', padding: '7px 16px', borderRadius: 8,

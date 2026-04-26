@@ -48,6 +48,7 @@ function AgentCard({ agent, apiKey, onRefresh }: { agent: Agent; apiKey: string;
           </div>
           <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end', flexShrink: 0 }}>
               {agent.roleName && <span className="badge badge-indigo" style={{ fontSize: 10 }}>{agent.roleName}</span>}
+              {agent.squadsEnabled && <span className="badge badge-accent" style={{ fontSize: 10 }}>squads</span>}
               {agent.inGroup  && <span className="badge badge-accent"  style={{ fontSize: 10 }}>group</span>}
               <span className={`badge ${agent.status === 'active' ? 'badge-green' : agent.status === 'paused' ? 'badge-amber' : 'badge-red'}`}>{agent.status}</span>
             </div>
@@ -55,10 +56,13 @@ function AgentCard({ agent, apiKey, onRefresh }: { agent: Agent; apiKey: string;
 
         {/* Wallet */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--surface2)', borderRadius: 8, padding: '7px 10px', marginBottom: 14 }}>
-          <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--muted)' }}>{agent.walletAddress.slice(0,16)}...{agent.walletAddress.slice(-6)}</span>
+          <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--muted)' }}>
+            {(agent.squadsEnabled && agent.squadsVaultPda ? agent.squadsVaultPda : agent.walletAddress).slice(0,16)}...
+            {(agent.squadsEnabled && agent.squadsVaultPda ? agent.squadsVaultPda : agent.walletAddress).slice(-6)}
+          </span>
           <div style={{ display: 'flex', gap: 6 }}>
             <span className="badge badge-indigo" style={{ fontSize: 10 }}>{agent.chain}</span>
-            <button onClick={() => navigator.clipboard.writeText(agent.walletAddress)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted2)', padding: 0 }}>
+            <button onClick={() => navigator.clipboard.writeText(agent.squadsEnabled && agent.squadsVaultPda ? agent.squadsVaultPda : agent.walletAddress)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted2)', padding: 0 }}>
               <Copy size={11} />
             </button>
           </div>
@@ -165,7 +169,7 @@ export default function AgentsPage() {
   const [showNew, setShowNew]   = useState(false)
   const [creating, setCreating] = useState(false)
   const [error, setError]       = useState('')
-  const [form, setForm]         = useState({ name: '', description: '', walletAddress: '', chain: 'solana', dailyLimit: '1.0', txLimit: '0.1', approvalAbove: '0.5' })
+  const [form, setForm]         = useState({ name: '', description: '', walletAddress: '', chain: 'solana', squadsEnabled: false, dailyLimit: '1.0', txLimit: '0.1', approvalAbove: '0.5' })
 
   const load = useCallback(async () => {
     if (!apiKey) return
@@ -178,9 +182,9 @@ export default function AgentsPage() {
     if (!form.name || !form.walletAddress) { setError('Name and wallet address are required'); return }
     setCreating(true); setError('')
     try {
-      await createAgent(apiKey, { name: form.name, description: form.description, walletAddress: form.walletAddress, chain: form.chain, policy: { dailyLimit: +form.dailyLimit, txLimit: +form.txLimit, requireApprovalAbove: +form.approvalAbove, whitelistedAddresses: [], allowedChains: [form.chain], killSwitch: false } })
+      await createAgent(apiKey, { name: form.name, description: form.description, walletAddress: form.walletAddress, chain: form.chain, squadsEnabled: form.chain === 'solana' ? form.squadsEnabled : false, policy: { dailyLimit: +form.dailyLimit, txLimit: +form.txLimit, requireApprovalAbove: +form.approvalAbove, whitelistedAddresses: [], allowedChains: [form.chain], killSwitch: false } })
       setShowNew(false)
-      setForm({ name: '', description: '', walletAddress: '', chain: 'solana', dailyLimit: '1.0', txLimit: '0.1', approvalAbove: '0.5' })
+      setForm({ name: '', description: '', walletAddress: '', chain: 'solana', squadsEnabled: false, dailyLimit: '1.0', txLimit: '0.1', approvalAbove: '0.5' })
       load()
     } catch (e: any) { setError(e.message) } finally { setCreating(false) }
   }
@@ -223,6 +227,15 @@ export default function AgentsPage() {
                 <input className="input" placeholder={form.chain === 'base' ? '0x... Base address' : 'Solana public key'} value={form.walletAddress} onChange={e => setForm(f => ({ ...f, walletAddress: e.target.value }))} />
               </div>
             </div>
+            {form.chain === 'solana' && (
+              <div style={{ marginTop: 12, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 500 }}>Squads Vault</div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)' }}>Enable on-chain spending limits via Squads multisig vault</div>
+                </div>
+                <input type="checkbox" checked={form.squadsEnabled} onChange={e => setForm(f => ({ ...f, squadsEnabled: e.target.checked }))} />
+              </div>
+            )}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginTop: 12 }}>
               {[[`Daily Limit (${form.chain === 'base' ? 'ETH' : 'SOL'})`, 'dailyLimit'], [`TX Limit (${form.chain === 'base' ? 'ETH' : 'SOL'})`, 'txLimit'], [`Approval Above (${form.chain === 'base' ? 'ETH' : 'SOL'})`, 'approvalAbove']].map(([l, k]) => (
                 <div key={k}>

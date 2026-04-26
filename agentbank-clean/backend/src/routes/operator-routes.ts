@@ -3,8 +3,67 @@ import { requireOperator } from "../middleware/auth";
 import * as db from "../db";
 import * as solana from "../services/solana";
 import * as base from "../services/base";
+import * as squads from "../services/squads";
+import { isAddress } from "viem";
+import { getPremiumPricing, updatePremiumPricing } from "../services/x402-config";
 
 export async function operatorRoutes(app: FastifyInstance) {
+  function remediationForPrerequisite(code: string): string {
+    switch (code) {
+      case "claim_agent":
+        return "Open the claim link and activate the agent.";
+      case "native_x402_requires_base_chain":
+        return "Register or migrate this agent to Base chain for native x402.";
+      case "configure_api_base_url":
+        return "Set API_URL in backend environment to a valid /v1 base URL.";
+      case "configure_x402_pricing":
+        return "Update x402 pricing (network, amountAtomic, asset) in operator pricing settings.";
+      case "configure_x402_pay_to":
+        return "Set a real settlement address in X402_PAY_TO or operator pricing payTo.";
+      default:
+        return "Review capability diagnostics and rerun strict smoke.";
+    }
+  }
+
+  function computeAgentX402Readiness(agent: db.Agent) {
+    const cfg = getPremiumPricing();
+    const claimStatus = (agent as any).claimStatus || "claimed";
+    const isClaimed = claimStatus === "claimed";
+    const isBaseChain = agent.chain === "base";
+    const premiumEndpointConfigured = Boolean(process.env.API_URL || "http://localhost:3001/v1");
+    const x402PricingConfigured = Boolean(cfg.network && cfg.asset && cfg.amountAtomic);
+    const x402PayToConfigured = Boolean(
+      cfg.payTo && cfg.payTo !== "0x1111111111111111111111111111111111111111"
+    );
+
+    const missingPrerequisites: string[] = [];
+    if (!isClaimed) missingPrerequisites.push("claim_agent");
+    if (!isBaseChain) missingPrerequisites.push("native_x402_requires_base_chain");
+    if (!premiumEndpointConfigured) missingPrerequisites.push("configure_api_base_url");
+    if (!x402PricingConfigured) missingPrerequisites.push("configure_x402_pricing");
+    if (!x402PayToConfigured) missingPrerequisites.push("configure_x402_pay_to");
+
+    const canUseProxyX402 = isClaimed;
+    const canUseNativeX402 = isClaimed && isBaseChain && premiumEndpointConfigured && x402PricingConfigured && x402PayToConfigured;
+    const x402Mode = canUseNativeX402
+      ? "native_enabled"
+      : canUseProxyX402
+        ? "proxy_enabled"
+        : "not_enabled";
+
+    return {
+      claimStatus,
+      x402Mode,
+      canUseProxyX402,
+      canUseNativeX402,
+      missingPrerequisites,
+      blockerHints: missingPrerequisites.map((code) => ({
+        code,
+        remediation: remediationForPrerequisite(code),
+      })),
+    };
+  }
+
 
   app.post("/operators/register", async (req, reply) => {
     const { email, orgName } = req.body as { email: string; orgName: string };
@@ -14,8 +73,8 @@ export async function operatorRoutes(app: FastifyInstance) {
   });
 
   app.post("/operators/agents", { preHandler: requireOperator }, async (req, reply) => {
-    const { name, description, walletAddress, chain, policy } = req.body as {
-      name: string; description?: string; walletAddress: string; chain?: string; policy?: Partial<db.Policy>;
+    const { name, description, walletAddress, chain, policy, squadsEnabled } = req.body as {
+      name: string; description?: string; walletAddress: string; chain?: string; policy?: Partial<db.Policy>; squadsEnabled?: boolean;
     };
     if (!name) return reply.status(400).send({ error: "name is required" });
     if (!walletAddress) return reply.status(400).send({ error: "walletAddress is required" });
@@ -30,8 +89,54 @@ export async function operatorRoutes(app: FastifyInstance) {
       allowedChains:        policy?.allowedChains         ?? [txChain],
       killSwitch:           policy?.killSwitch            ?? false,
     };
-    const agent = await db.createAgent({ operatorId: req.operator!.id, name, description: description || "", walletAddress, chain: txChain, policy: defaultPolicy });
-    return reply.send({ message: "Agent registered", agentId: agent.id, agentApiKey: agent.apiKey, walletAddress: agent.walletAddress, chain: agent.chain, policy: agent.policy });
+    const useSquads = Boolean(squadsEnabled && txChain === "solana");
+    let squadsMeta: {
+      squadsEnabled?: boolean;
+      squadsMultisigPda?: string;
+      squadsVaultPda?: string;
+      squadsVaultIndex?: number;
+      squadsSpendingLimitPda?: string;
+      squadsCreateKey?: string;
+    } = {};
+
+    if (useSquads) {
+      const ms = await squads.createAgentMultisig(walletAddress);
+      const sl = await squads.configureSpendingLimit({
+        multisigPda: ms.multisigPda,
+        policy: defaultPolicy,
+        vaultIndex: ms.vaultIndex,
+        agentPublicKey: walletAddress,
+      });
+      squadsMeta = {
+        squadsEnabled: true,
+        squadsMultisigPda: ms.multisigPda,
+        squadsVaultPda: ms.vaultPda,
+        squadsVaultIndex: ms.vaultIndex,
+        squadsSpendingLimitPda: sl.spendingLimitPda,
+        squadsCreateKey: ms.createKey,
+      };
+    }
+
+    const agent = await db.createAgent({
+      operatorId: req.operator!.id,
+      name,
+      description: description || "",
+      walletAddress,
+      chain: txChain,
+      policy: defaultPolicy,
+      ...squadsMeta,
+    });
+    return reply.send({
+      message: "Agent registered",
+      agentId: agent.id,
+      agentApiKey: agent.apiKey,
+      walletAddress: agent.walletAddress,
+      chain: agent.chain,
+      policy: agent.policy,
+      squadsEnabled: agent.squadsEnabled || false,
+      squadsVaultPda: agent.squadsVaultPda,
+      depositAddress: agent.squadsEnabled ? agent.squadsVaultPda : agent.walletAddress,
+    });
   });
 
   app.get("/operators/agents", { preHandler: requireOperator }, async (req, reply) => {
@@ -41,11 +146,20 @@ export async function operatorRoutes(app: FastifyInstance) {
       if (agent.chain === "base") {
         const bal = await base.getBalance(agent.walletAddress);
         balance = { native: bal.eth, unit: "ETH" };
+      } else if (agent.squadsEnabled && agent.squadsVaultPda) {
+        const bal = await squads.getVaultBalance(agent.squadsVaultPda);
+        balance = { native: bal.sol, unit: "SOL" };
       } else {
         const bal = await solana.getBalance(agent.walletAddress);
         balance = { native: bal.sol, unit: "SOL" };
       }
-      return { id: agent.id, name: agent.name, description: agent.description, walletAddress: agent.walletAddress, chain: agent.chain, status: agent.status, roleName: agent.roleName, roleDocument: agent.roleDocument, inGroup: agent.inGroup || false, balance, todaySpend: await db.getTodaySpend(agent.id), dailyLimit: agent.policy.dailyLimit, policy: agent.policy, createdAt: agent.createdAt, paperMode: (agent as any).paperMode, paperBalance: (agent as any).paperBalance };
+      return {
+        id: agent.id, name: agent.name, description: agent.description, walletAddress: agent.walletAddress, chain: agent.chain, status: agent.status,
+        roleName: agent.roleName, roleDocument: agent.roleDocument, inGroup: agent.inGroup || false, balance, todaySpend: await db.getTodaySpend(agent.id),
+        dailyLimit: agent.policy.dailyLimit, policy: agent.policy, createdAt: agent.createdAt, paperMode: (agent as any).paperMode, paperBalance: (agent as any).paperBalance,
+        squadsEnabled: agent.squadsEnabled || false, squadsMultisigPda: agent.squadsMultisigPda, squadsVaultPda: agent.squadsVaultPda,
+        squadsVaultIndex: agent.squadsVaultIndex ?? 0, squadsSpendingLimitPda: agent.squadsSpendingLimitPda,
+      };
     }));
     return reply.send({ agents: enriched });
   });
@@ -56,6 +170,21 @@ export async function operatorRoutes(app: FastifyInstance) {
     const agent = await db.getAgentById(agentId);
     if (!agent || agent.operatorId !== req.operator!.id) return reply.status(404).send({ error: "Agent not found" });
     await db.updateAgentPolicy(agentId, updates);
+    const nextAgent = await db.getAgentById(agentId);
+
+    if (nextAgent?.squadsEnabled && nextAgent.chain === "solana" && nextAgent.squadsMultisigPda) {
+      if (nextAgent.squadsSpendingLimitPda) {
+        await squads.removeSpendingLimit(nextAgent.squadsMultisigPda, nextAgent.squadsSpendingLimitPda);
+      }
+      const sl = await squads.configureSpendingLimit({
+        multisigPda: nextAgent.squadsMultisigPda,
+        policy: nextAgent.policy,
+        vaultIndex: nextAgent.squadsVaultIndex ?? 0,
+        agentPublicKey: nextAgent.walletAddress,
+      });
+      await db.updateAgentSquads(agentId, { squadsSpendingLimitPda: sl.spendingLimitPda });
+    }
+
     return reply.send({ message: "Policy updated", policy: (await db.getAgentById(agentId))?.policy });
   });
 
@@ -68,6 +197,14 @@ export async function operatorRoutes(app: FastifyInstance) {
     await db.updateAgentStatus(agentId, statusMap[action]);
     if (action === "freeze")   await db.updateAgentPolicy(agentId, { killSwitch: true });
     if (action === "unfreeze") await db.updateAgentPolicy(agentId, { killSwitch: false });
+    if (agent.squadsEnabled && agent.chain === "solana" && agent.squadsMultisigPda) {
+      if (action === "freeze") {
+        await squads.removeMember(agent.squadsMultisigPda, agent.walletAddress);
+      }
+      if (action === "unfreeze") {
+        await squads.addMember(agent.squadsMultisigPda, agent.walletAddress);
+      }
+    }
     return reply.send({ message: `Agent ${action}d`, status: statusMap[action] });
   });
 
@@ -89,6 +226,14 @@ export async function operatorRoutes(app: FastifyInstance) {
     if (approval.status !== "pending") return reply.status(400).send({ error: "Already resolved" });
     await db.updateApprovalRequest(approvalId, action === "approve" ? "approved" : "rejected");
     await db.updateTransaction(approval.transactionId, { status: action === "approve" ? "approved" : "rejected", ...(action === "reject" && { rejectReason: "Rejected by operator" }) });
+    if (action === "approve") {
+      const tx = await db.getTransaction(approval.transactionId);
+      const agent = await db.getAgentById(approval.agentId);
+      if (agent?.squadsEnabled && agent.squadsMultisigPda && tx?.memo?.startsWith("squads:txIndex:")) {
+        const raw = tx.memo.split("squads:txIndex:")[1];
+        if (raw) await squads.approveProposal(agent.squadsMultisigPda, BigInt(raw));
+      }
+    }
     return reply.send({ message: action === "approve" ? "Approved — agent will sign and broadcast" : "Rejected" });
   });
 
@@ -170,6 +315,94 @@ export async function operatorRoutes(app: FastifyInstance) {
 
   app.get("/operators/transactions", { preHandler: requireOperator }, async (req, reply) => {
     return reply.send({ transactions: await db.getOperatorTransactions(req.operator!.id) });
+  });
+
+  app.get("/operators/x402/pricing", { preHandler: requireOperator }, async (req, reply) => {
+    return reply.send({ pricing: getPremiumPricing() });
+  });
+
+  app.patch("/operators/x402/pricing", { preHandler: requireOperator }, async (req, reply) => {
+    const body = req.body as Partial<{
+      network: string;
+      amountAtomic: string;
+      asset: string;
+      payTo: string;
+      description: string;
+      maxTimeoutSeconds: number;
+    }>;
+
+    if (body.payTo !== undefined && !isAddress(body.payTo)) {
+      return reply.status(400).send({ error: "payTo must be a valid EVM address" });
+    }
+    if (body.amountAtomic !== undefined && (!/^\d+$/.test(body.amountAtomic) || body.amountAtomic === "0")) {
+      return reply.status(400).send({ error: "amountAtomic must be a positive integer string" });
+    }
+    if (body.maxTimeoutSeconds !== undefined && (!Number.isInteger(body.maxTimeoutSeconds) || body.maxTimeoutSeconds < 10)) {
+      return reply.status(400).send({ error: "maxTimeoutSeconds must be an integer >= 10" });
+    }
+
+    const pricing = updatePremiumPricing(body, req.operator!.id);
+    return reply.send({
+      message: "x402 premium pricing updated",
+      pricing,
+      note: "This demo config is in-memory and resets on backend restart",
+    });
+  });
+
+  app.get("/operators/x402/revenue", { preHandler: requireOperator }, async (req, reply) => {
+    const revenue = await db.getX402RevenueStats(req.operator!.id);
+    return reply.send({
+      revenue,
+      unit: "USDC atomic (6 decimals)",
+      hint: "divide amountAtomic by 1,000,000 for USDC",
+    });
+  });
+
+  app.get("/operators/x402/payments", { preHandler: requireOperator }, async (req, reply) => {
+    const q = req.query as Record<string, string | undefined>;
+    const page = Math.min(10_000, Math.max(1, parseInt(q.page || "1", 10) || 1));
+    const pageSize = Math.min(100, Math.max(1, parseInt(q.pageSize || "20", 10) || 20));
+    const network = q.network?.trim() || undefined;
+    const fromDate = q.from?.trim() || undefined;
+    const toDate = q.to?.trim() || undefined;
+    let verified: boolean | undefined;
+    if (q.verified === "true") verified = true;
+    else if (q.verified === "false") verified = false;
+
+    const { items, total } = await db.listX402Payments({
+      operatorId: req.operator!.id,
+      network,
+      fromDate,
+      toDate,
+      verified,
+      page,
+      pageSize,
+    });
+    return reply.send({ payments: items, total, page, pageSize });
+  });
+
+  app.get("/operators/x402/readiness", { preHandler: requireOperator }, async (req, reply) => {
+    const agents = await db.getOperatorAgents(req.operator!.id);
+    const readiness = agents.map((agent) => {
+      const x402 = computeAgentX402Readiness(agent);
+      return {
+        agentId: agent.id,
+        agentName: agent.name,
+        chain: agent.chain,
+        status: agent.status,
+        ...x402,
+      };
+    });
+
+    const summary = {
+      totalAgents: readiness.length,
+      nativeReady: readiness.filter((a) => a.x402Mode === "native_enabled").length,
+      proxyOnly: readiness.filter((a) => a.x402Mode === "proxy_enabled").length,
+      notEnabled: readiness.filter((a) => a.x402Mode === "not_enabled").length,
+      withBlockers: readiness.filter((a) => a.missingPrerequisites.length > 0).length,
+    };
+
+    return reply.send({ summary, readiness });
   });
 
   // ── Public feed endpoint (no auth required) ─────────────────────────────

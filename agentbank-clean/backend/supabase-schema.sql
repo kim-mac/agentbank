@@ -131,6 +131,14 @@ ALTER TABLE agents ADD COLUMN IF NOT EXISTS paper_mode         BOOLEAN DEFAULT F
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS paper_balance      NUMERIC DEFAULT 100.0; -- virtual SOL
 ALTER TABLE agents ADD COLUMN IF NOT EXISTS paper_balance_usd  NUMERIC DEFAULT 10000.0; -- virtual USD
 
+-- ── Migration: Squads vault metadata (Solana only) ─────────────────────────
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS squads_enabled             BOOLEAN DEFAULT FALSE;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS squads_multisig_pda        TEXT;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS squads_vault_pda           TEXT;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS squads_vault_index         INTEGER DEFAULT 0;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS squads_spending_limit_pda  TEXT;
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS squads_create_key          TEXT;
+
 CREATE TABLE IF NOT EXISTS paper_trades (
   id               TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   agent_id         TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
@@ -154,3 +162,29 @@ CREATE TABLE IF NOT EXISTS paper_trades (
 CREATE INDEX IF NOT EXISTS idx_paper_trades_agent    ON paper_trades(agent_id);
 CREATE INDEX IF NOT EXISTS idx_paper_trades_status   ON paper_trades(status);
 CREATE INDEX IF NOT EXISTS idx_paper_trades_opened   ON paper_trades(opened_at DESC);
+
+-- ── Migration: x402 payment ledger + replay protection ─────────────────────
+CREATE TABLE IF NOT EXISTS x402_payments (
+  id                          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  operator_id                 UUID REFERENCES operators(id) ON DELETE SET NULL,
+  endpoint                    TEXT NOT NULL,
+  network                     TEXT NOT NULL,
+  amount_atomic               NUMERIC NOT NULL,
+  asset                       TEXT NOT NULL,
+  pay_to                      TEXT NOT NULL,
+  payer_address               TEXT NOT NULL,
+  nonce                       TEXT NOT NULL UNIQUE,
+  authorization_valid_after   TEXT NOT NULL,
+  authorization_valid_before  TEXT NOT NULL,
+  payment_signature           TEXT NOT NULL,
+  facilitator_verified        BOOLEAN NOT NULL DEFAULT FALSE,
+  facilitator_tx_hash         TEXT,
+  created_at                  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_x402_payments_operator   ON x402_payments(operator_id);
+CREATE INDEX IF NOT EXISTS idx_x402_payments_created_at ON x402_payments(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_x402_payments_network    ON x402_payments(network);
+
+-- Server-only access: backend uses SUPABASE_SERVICE_KEY (bypasses RLS). Anon/auth clients get no access.
+ALTER TABLE x402_payments ENABLE ROW LEVEL SECURITY;

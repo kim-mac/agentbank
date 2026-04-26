@@ -39,6 +39,11 @@ export interface Agent {
   }
   paperMode?:    boolean
   paperBalance?: number
+  squadsEnabled?: boolean
+  squadsMultisigPda?: string
+  squadsVaultPda?: string
+  squadsVaultIndex?: number
+  squadsSpendingLimitPda?: string
   createdAt: string
 }
 
@@ -77,6 +82,61 @@ export interface RegisterResult {
   message: string
 }
 
+export interface X402Pricing {
+  network: string
+  amountAtomic: string
+  asset: string
+  payTo: string
+  description: string
+  maxTimeoutSeconds: number
+}
+
+export interface X402RevenuePayment {
+  id: string
+  endpoint: string
+  network: string
+  amountAtomic: string
+  payerAddress: string
+  payTo: string
+  nonce: string
+  facilitatorVerified: boolean
+  facilitatorTxHash?: string
+  createdAt: string
+}
+
+export interface X402RevenueStats {
+  totalPayments: number
+  totalAmountAtomic: string
+  byNetwork: Record<string, { count: number; amountAtomic: string }>
+  recentPayments: X402RevenuePayment[]
+}
+
+export interface X402ReadinessBlockerHint {
+  code: string
+  remediation: string
+}
+
+export interface X402AgentReadinessRow {
+  agentId: string
+  agentName: string
+  chain: string
+  status: string
+  claimStatus: string
+  x402Mode: 'not_enabled' | 'proxy_enabled' | 'native_enabled'
+  canUseProxyX402: boolean
+  canUseNativeX402: boolean
+  missingPrerequisites: string[]
+  blockerHints: X402ReadinessBlockerHint[]
+}
+
+export interface X402ReadinessSummary {
+  totalAgents: number
+  nativeReady: number
+  proxyOnly: number
+  notEnabled: number
+  withBlockers: number
+}
+
 // ── Operators ──────────────────────────────────────────────────────────────
 
 export const registerOperator = (email: string, orgName: string) =>
@@ -88,7 +148,7 @@ export const getAgents = (apiKey: string) =>
   request<{ agents: Agent[] }>('GET', '/operators/agents', apiKey)
 
 export const createAgent = (apiKey: string, data: {
-  name: string; description: string; walletAddress: string; chain: string; policy: object
+  name: string; description: string; walletAddress: string; chain: string; squadsEnabled?: boolean; policy: object
 }) => request('POST', '/operators/agents', apiKey, data)
 
 export const updateAgentRole = (apiKey: string, agentId: string, data: { roleName?: string; roleDocument?: string; inGroup: boolean }) =>
@@ -113,6 +173,59 @@ export const getAgentPolicy = (apiKey: string, agentId: string) =>
 
 export const getTransactions = (apiKey: string) =>
   request<{ transactions: Transaction[] }>('GET', '/operators/transactions', apiKey)
+
+export const getX402Pricing = (apiKey: string) =>
+  request<{ pricing: X402Pricing }>('GET', '/operators/x402/pricing', apiKey)
+
+export const updateX402Pricing = (apiKey: string, payload: Partial<X402Pricing>) =>
+  request<{ pricing: X402Pricing; message: string; note?: string }>('PATCH', '/operators/x402/pricing', apiKey, payload)
+
+export const getX402Revenue = (apiKey: string) =>
+  request<{ revenue: X402RevenueStats; unit: string; hint: string }>('GET', '/operators/x402/revenue', apiKey)
+
+export const getX402Readiness = (apiKey: string) =>
+  request<{ summary: X402ReadinessSummary; readiness: X402AgentReadinessRow[] }>(
+    'GET',
+    '/operators/x402/readiness',
+    apiKey
+  )
+
+export interface X402PaymentRow {
+  id: string
+  endpoint: string
+  network: string
+  amountAtomic: string
+  asset: string
+  payTo: string
+  payerAddress: string
+  nonce: string
+  facilitatorVerified: boolean
+  facilitatorTxHash?: string
+  createdAt: string
+}
+
+export const getX402Payments = (apiKey: string, q: {
+  page?: number
+  pageSize?: number
+  network?: string
+  from?: string
+  to?: string
+  verified?: 'true' | 'false'
+}) => {
+  const sp = new URLSearchParams()
+  if (q.page) sp.set('page', String(q.page))
+  if (q.pageSize) sp.set('pageSize', String(q.pageSize))
+  if (q.network) sp.set('network', q.network)
+  if (q.from) sp.set('from', q.from)
+  if (q.to) sp.set('to', q.to)
+  if (q.verified) sp.set('verified', q.verified)
+  const qs = sp.toString()
+  return request<{ payments: X402PaymentRow[]; total: number; page: number; pageSize: number }>(
+    'GET',
+    `/operators/x402/payments${qs ? `?${qs}` : ''}`,
+    apiKey
+  )
+}
 
 // ── Approvals ─────────────────────────────────────────────────────────────
 

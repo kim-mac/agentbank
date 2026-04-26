@@ -10,6 +10,7 @@ function AgentCard({ agent, apiKey, onRefresh }: { agent: Agent; apiKey: string;
   const [loading, setLoading]       = useState(false)
   const [showPolicy, setShowPolicy] = useState(false)
   const pct = agent.dailyLimit > 0 ? Math.min(100, (agent.todaySpend / agent.dailyLimit) * 100) : 0
+  const unit = agent.balance?.unit || (agent.chain === 'base' ? 'ETH' : 'SOL')
 
   async function doFreeze(action: 'freeze'|'unfreeze'|'pause') {
     setLoading(true)
@@ -51,13 +52,13 @@ function AgentCard({ agent, apiKey, onRefresh }: { agent: Agent; apiKey: string;
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
           <div style={{ background: 'var(--surface2)', borderRadius: 8, padding: '10px 12px' }}>
             <div style={{ fontSize: 10, color: 'var(--muted2)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Balance</div>
-            <div style={{ fontSize: 18, fontWeight: 500, fontFamily: 'var(--mono)', color: 'var(--text)' }}>{agent.balance.sol.toFixed(4)}</div>
-            <div style={{ fontSize: 10, color: 'var(--muted2)' }}>SOL</div>
+            <div style={{ fontSize: 18, fontWeight: 500, fontFamily: 'var(--mono)', color: 'var(--text)' }}>{agent.balance.native.toFixed(4)}</div>
+            <div style={{ fontSize: 10, color: 'var(--muted2)' }}>{unit}</div>
           </div>
           <div style={{ background: 'var(--surface2)', borderRadius: 8, padding: '10px 12px' }}>
             <div style={{ fontSize: 10, color: 'var(--muted2)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Today</div>
             <div style={{ fontSize: 18, fontWeight: 500, fontFamily: 'var(--mono)', color: 'var(--text)' }}>{agent.todaySpend.toFixed(4)}</div>
-            <div style={{ fontSize: 10, color: 'var(--muted2)' }}>of {agent.dailyLimit} SOL</div>
+            <div style={{ fontSize: 10, color: 'var(--muted2)' }}>of {agent.dailyLimit} {unit}</div>
           </div>
         </div>
 

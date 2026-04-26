@@ -68,7 +68,7 @@ export default function LandingPage() {
           opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(16px)',
           transition: 'all 0.7s ease 0.2s',
         }}>
-          The wallet built<br />for{' '}
+          The wallet interface built<br />for{' '}
           <em style={{ fontStyle: 'italic', color: 'var(--accent)' }}>AI agents</em>
         </h1>
 
@@ -79,7 +79,7 @@ export default function LandingPage() {
           opacity: visible ? 1 : 0, transform: visible ? 'translateY(0)' : 'translateY(16px)',
           transition: 'all 0.7s ease 0.35s',
         }}>
-          Give your AI agent a Solana wallet with programmable spending limits.
+          Give your AI agent a Solana or Base wallet with programmable spending limits.
           The agent holds its own keys. You set the rules.
         </p>
 
@@ -169,7 +169,7 @@ export default function LandingPage() {
             ['🔑', 'Non-custodial by default', "The agent generates its own keypair locally. The private key never leaves the agent's machine."],
             ['🛡️', 'Programmable policies', 'Set daily limits, tx limits, time rules, address whitelists, and approval thresholds.'],
             ['⚡', 'Human in the loop', 'Large transactions pause for approval. Freeze any agent instantly. You\'re always in control.'],
-            ['◎', 'Solana native', 'Sub-cent fees and 400ms finality. Perfect for high-frequency agent operations.'],
+            ['◎', 'Solana & Base', 'Native support on Solana and Base (Ethereum L2). Sub-cent fees on Solana; fast L2 settlement on Base.'],
             ['📋', 'Skill file onboarding', 'Any agent that can read a URL can self-onboard. One instruction is all it takes.'],
             ['📊', 'Full audit trail', "Every transaction logged with the agent's memo. Complete spend tracking and history."],
           ].map(([icon, title, desc]) => (

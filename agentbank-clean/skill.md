@@ -97,6 +97,7 @@ Content-Type: application/json
 ```
 
 Set `"chain"` to `"solana"` (default) or `"base"` depending on your wallet type.
+For Solana, you can optionally set `"squadsEnabled": true` to use a Squads vault.
 
 **Save the response immediately:**
 

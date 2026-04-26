@@ -167,6 +167,12 @@ export default function MessagesPage() {
     return true
   })
 
+  // Ensure newest messages appear at the bottom of the feed.
+  // Backend may return newest-first; we normalize to oldest->newest.
+  const ordered = [...filtered].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  )
+
   const groupAgents  = agents.filter(a => (a as any).inGroup)
   const activeAgents = groupAgents.filter(a => a.status === 'active')
 
@@ -259,7 +265,7 @@ export default function MessagesPage() {
                 </div>
               </div>
             ) : (
-              filtered.map(msg => <MessageBubble key={msg.id} msg={msg} />)
+              ordered.map(msg => <MessageBubble key={msg.id} msg={msg} />)
             )}
           </div>
         </div>

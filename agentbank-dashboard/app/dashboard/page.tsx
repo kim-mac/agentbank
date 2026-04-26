@@ -134,7 +134,7 @@ export default function OverviewPage() {
         )}
 
         {/* Add another agent */}
-        {skillUrl && agents.length > 0 && (
+        {skillUrl && (
           <div className="card" style={{ padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ width: 32, height: 32, background: 'var(--accent2)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
