@@ -1,5 +1,5 @@
 # Environment Variables (CRITICAL - NEVER commit secrets)
-# .env  # Temporarily commented out for Railway deployment
+.env
 .env.example
 .env.local
 .env.*.local
@@ -93,18 +93,10 @@ DEPLOYMENT_GUIDE.md
 .railway/
 demoagent/
 
-# Compiled Files
-*.js
-*.jsx
-!*.config.js
-!next.config.js
-!.github/**/*.js
-
 # Misc
 .cache
 .cache/
 *.pem
-*.key
 .env.*.pem
 .env.*.key
 

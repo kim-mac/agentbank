@@ -14,7 +14,7 @@ In one run, verify:
 
 ## Prerequisites
 
-- Backend running at `http://localhost:3011`
+- Backend running at `http://localhost:3001` (or set `AGENTBANK_API_URL` to match your `PORT`)
 - SDK dependencies installed in `agentbank-clean/sdk`
 - `X402_PAY_TO` configured to a real Base address
 

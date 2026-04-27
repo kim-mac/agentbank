@@ -71,7 +71,7 @@ function buildValidPaymentSignature(challenge: PaymentRequired, nonce: string) {
 }
 
 async function run() {
-  const apiBase = process.env.AGENTBANK_API_URL || "http://localhost:3011/v1";
+  const apiBase = process.env.AGENTBANK_API_URL || "http://localhost:3001/v1";
   const premiumUrl = process.env.AGENTBANK_PREMIUM_URL || `${apiBase}/premium/insights`;
 
   const initial = await fetch(premiumUrl, { method: "GET" });

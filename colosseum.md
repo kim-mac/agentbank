@@ -246,7 +246,7 @@ Top failure signatures and exact fixes:
 
 ### Runtime Validation (2026-04-25)
 
-- Ran `x402-onboarding-smoke.ts` against local backend (`http://localhost:3011/v1`).
+- Ran `x402-onboarding-smoke.ts` against local backend (`http://localhost:3001/v1`).
 - Result:
   - `pass: true`
   - all checks `true`
@@ -324,7 +324,7 @@ Current strict-mode note:
 
 Submission endpoint baseline used for verification:
 
-- `http://localhost:3011/v1`
+- `http://localhost:3001/v1`
 
 Environment/config checks:
 

@@ -71,7 +71,7 @@ function printResult(result: unknown, opts: CliOptions) {
 
 async function run() {
   const opts = parseArgs(process.argv.slice(2));
-  const apiBase = process.env.AGENTBANK_API_URL || "http://localhost:3011/v1";
+  const apiBase = process.env.AGENTBANK_API_URL || "http://localhost:3001/v1";
   const premiumUrl = process.env.AGENTBANK_PREMIUM_URL || `${apiBase}/premium/insights`;
   const email = process.env.SMOKE_EMAIL || `smoke+${nowTag()}_${uniqueSuffix()}@example.com`;
   const orgName = process.env.SMOKE_ORG || "Smoke Lab";

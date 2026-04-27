@@ -15,13 +15,13 @@ jobs:
     env:
       USE_SUPABASE: "false"
       NODE_ENV: "test"
-      PORT: "3011"
-      API_URL: "http://127.0.0.1:3011/v1"
-      SITE_URL: "http://127.0.0.1:3011"
+      PORT: "3001"
+      API_URL: "http://127.0.0.1:3001/v1"
+      SITE_URL: "http://127.0.0.1:3001"
       DASHBOARD_URL: "http://127.0.0.1:3000"
       X402_PAY_TO: "0x9095502F82D2FE8087750A70691e5BF07b1D60dE"
-      AGENTBANK_API_URL: "http://127.0.0.1:3011/v1"
-      AGENTBANK_PREMIUM_URL: "http://127.0.0.1:3011/v1/premium/insights"
+      AGENTBANK_API_URL: "http://127.0.0.1:3001/v1"
+      AGENTBANK_PREMIUM_URL: "http://127.0.0.1:3001/v1/premium/insights"
 
     steps:
       - name: Checkout
@@ -49,7 +49,7 @@ jobs:
       - name: Wait for backend health
         run: |
           for i in {1..30}; do
-            if curl -fsS "http://127.0.0.1:3011/health" > /dev/null; then
+            if curl -fsS "http://127.0.0.1:3001/health" > /dev/null; then
               exit 0
             fi
             sleep 2
